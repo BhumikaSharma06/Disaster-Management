@@ -1,0 +1,13 @@
+# AapdaSetu real data audit report
+
+Generated: 2026-11-18T22:13:25
+
+This report includes real files only. It contains no synthetic observations or fabricated metrics.
+
+| File | Format | Date range | Rows | Missing value % | Time-step regularity | Gaps | Station / variable names |
+|---|---|---|---:|---:|---|---:|---|
+| ml/data/raw/bihar_sw_daily_discharge_manual.csv | .csv | 2020-06-15 to 2025-05-31 | 52093 | 15.16% (mean across columns) | Most common step: 24 hours | 6 | stations: Agropatti, Arariya, Azamnagar, Badlaghat 2, Badlaghat 1, Baharkhal, Baisi, Bibiganj, Birpur Barrage, Borawari, buxar, Chintamanpur/Chintamanganj, Chulahi Ghat, Dadaulghat, Dalsingsarai, Darjiya, Derwa Sahebganj, Dhabol, Dhamaraghat, Dheng; variables: Discharge (M3/s) |
+| ml/data/raw/rwl_tel_hr_bihar_999_2021_2025.csv | .csv | 2021-09-08 to 2025-12-31 | 821160 | 0.00% (mean across columns) | Most common step: 1 hours | 51 | stations: Arrah Chhapra Bridge, Arwal Sahar Bridge, Baisi_1, Bhaunr_1, Bibiganj_1, Chanan_1, Dhanaha Bridge, Gardankatta West_1, Jamuawan, Katharatanr, Kharagpur Dam, Kharuara_1, Kundar Weir, Lathane, Patauna(Kiul River), Patauna (on Nakti River), Tarabari_1; variables: Is_DischargeDataAvailable, River Water Level Telemetry Hourly (meter) |
+| ml/data/raw/rwl_tel_hr_bihar_999_2026_2030.csv | .csv | 2026-01-01 to 2026-11-17 | 108614 | 0.00% (mean across columns) | Most common step: 1 hours | 1 | stations: Arrah Chhapra Bridge, Arwal Sahar Bridge, Baisi_1, Bhaunr_1, Bibiganj_1, Chanan_1, Dhanaha Bridge, Gardankatta West_1, Jamuawan, Katharatanr, Kharuara_1, Kundar Weir, Patauna(Kiul River), Patauna (on Nakti River), Tarabari_1; variables: Is_DischargeDataAvailable, River Water Level Telemetry Hourly (meter) |
+| ml/data/raw/rwl_tele_hr_bihar_999_1961_1990.csv | .csv | 1969-12-31 to 1970-10-06 | 14 | 0.00% (mean across columns) | Most common step: 1 hours | 9 | stations: Arwal Sahar Bridge, Baisi_1, Bhaunr_1, Bibiganj_1, Jamuawan, Katharatanr, Kharuara_1, Kundar Weir, Patauna (on Nakti River); variables: Is_DischargeDataAvailable, River Water Level Telemetry Hourly (meter) |
+| ml/data/raw/rwl_tele_hr_bihar_999_1991_2020.csv | .csv | 1999-11-30 to 2000-04-11 | 237 | 0.00% (mean across columns) | Most common step: 1 hours | 115 | stations: Arwal Sahar Bridge, Baisi_1, Bhaunr_1, Chanan_1, Gardankatta West_1, Kharagpur Dam, Kharuara_1, Lathane, Patauna(Kiul River), Patauna (on Nakti River), Tarabari_1; variables: Is_DischargeDataAvailable, River Water Level Telemetry Hourly (meter) |

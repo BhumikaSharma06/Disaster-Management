@@ -1,0 +1,21 @@
+# AapdaSetu data inventory
+
+| Source | Variable | Spatial coverage | Time range | Resolution | Access method | License / registration needed | Status | File location | Notes |
+|---|---|---|---|---|---|---|---|---|---|
+| User-supplied Bihar manual discharge file (source attribution TODO) | Daily river discharge | Birpur Barrage, Supaul, Kosi; also other Bihar sites | 2022-06-01 to 2025-05-31 for Birpur Barrage | Daily; 1,096 Birpur Barrage rows | Local supplied CSV | Original source/licence/registration not documented; confirm | HAVE | `ml/data/raw/bihar_sw_daily_discharge_manual.csv` | Birpur metadata and M3/s column are present. Official station ID and danger discharge threshold are not supplied. |
+| Bihar river-level telemetry files (source attribution TODO) | Hourly-labelled water level | Multiple Bihar districts; Baisi_1 is shown in Purnia | Files cover multiple periods; per-station range varies | Labelled hourly; station timestamps may be irregular | Local supplied CSV exports | Original source/licence/registration not documented; confirm | HAVE | `ml/data/raw/rwl_*_bihar_999_*.csv` | Exact telemetry headers are supported by the loader. Baisi_1 river and basin columns are `-`, so Kosi attribution is unverified and it is not an active training station. |
+| CWC / India-WRIS | River stage and discharge | TODO: confirm the source of supplied files and Kosi station IDs | TODO | TODO | TODO: approved export or supplied archive | TODO: confirm current terms and account requirements | NOT AVAILABLE | `ml/data/raw/` | The supplied files have no provenance information establishing that they came from CWC/India-WRIS. Do not infer this attribution. |
+| Upstream barrage / Nepal-side provider | Upstream discharge or stage | Birpur Barrage / TODO provider coverage | TODO | TODO | TODO: supplied archived export or approved source | TODO | NOT AVAILABLE | `ml/data/raw/` (TODO filename) | Placeholder checkpoint is known only by name; provider and file format are unknown. |
+| IMD gridded rainfall | Daily gridded rainfall | Lower Kosi Sub-Basin and four pilot districts | TODO | TODO: preserve source native grid | Local IMD gridded file in NetCDF/GRIB/Binary as supplied | TODO: confirm redistribution terms | NOT AVAILABLE | `ml/data/raw/` | Loader supports IMD `.nc`, `.nc4`, `.grib`, `.grib2`, `.bin`, and xarray-compatible files; no download. |
+| IMD temperature (optional) | Daily maximum/minimum or mean temperature | Pilot districts | TODO | TODO | Local archived export | TODO | NOT AVAILABLE | `ml/data/raw/` | Optional; do not block flood forecasting. |
+| DEM: CartoDEM/Bhuvan or SRTM fallback | Elevation and derived terrain exposure | Lower Kosi Sub-Basin | Static | TODO | Supplied local raster | TODO: confirm source licence and redistribution | NOT AVAILABLE | `ml/data/raw/` (TODO filename) | For later ward-level terrain exposure only; not used to forecast gauge exceedance. |
+| District / block boundaries | Administrative polygons | Supaul, Saharsa, Madhepura, Purnia | Static or latest known vintage | Polygon | Supplied local GeoPackage/Shapefile | TODO: confirm authoritative and licence status | NOT AVAILABLE | `ml/data/raw/` (TODO filename) | Later mapping; 24/48/72-hour target remains gauge/station based. |
+| OpenStreetMap road network | Roads and accessibility | Lower Kosi pilot area | TODO extract date | Vector / network | Supplied local OSM extract or PBF | ODbL; attribution and share-alike obligations may apply | NOT AVAILABLE | `ml/data/raw/` (TODO filename) | Routing scope is deferred; inventory only. |
+| Historical flood extents / event records | Flood inundation, event dates, impacts | Kosi basin | TODO | Event polygon or record table | Supplied local archive; source/URL not invented | TODO | NOT AVAILABLE | `ml/data/raw/` (TODO filename) | Useful for later validation and ward exposure; not a gauge label source. |
+
+## Source status policy
+
+`HAVE` means a local file exists; it does not verify its provenance, licence,
+fitness for a specific station, or suitability for training. `NOT AVAILABLE`
+means no real file was supplied or verified. Synthetic data may only appear in
+unit-test fixtures and must never be used to report real model metrics.

@@ -1,0 +1,77 @@
+basin_name: "Lower Kosi Sub-Basin"
+
+# Candidate files and stations found locally. Presence does not mean they are
+# ready for model training; see notes below and docs/data_inventory.md.
+available_data:
+  telemetry_files:
+    - "rwl_tele_hr_bihar_999_1961_1990.csv"
+    - "rwl_tele_hr_bihar_999_1991_2020.csv"
+    - "rwl_tel_hr_bihar_999_2021_2025.csv"
+    - "rwl_tel_hr_bihar_999_2026_2030.csv"
+  daily_discharge_file: "bihar_sw_daily_discharge_manual.csv"
+  candidates:
+    - name: "Birpur Barrage"
+      source_file: "bihar_sw_daily_discharge_manual.csv"
+      district: "Supaul"
+      river: "Kosi"
+      basin: "Kosi"
+      variable: "Discharge (M3/s)"
+      timestamp_column: "Date"
+      station_id: null # TODO: obtain the official station ID.
+      danger_level: null # TODO: obtain the official discharge danger threshold and units.
+      status: "DISCHARGE_CANDIDATE"
+    - name: "Baisi_1"
+      source_file: "rwl_tel_hr_bihar_999_2021_2025.csv"
+      district: "PURNIA"
+      river: null # Source file contains '-' for river and basin; Kosi attribution is unverified.
+      basin: null
+      variable: "River Water Level Telemetry Hourly (meter)"
+      timestamp_column: "Data Acquisition Time"
+      station_id: null # TODO: source has a station name, not a confirmed official ID.
+      danger_level: null # TODO: obtain verified station level and confirm its datum.
+      status: "STAGE_CANDIDATE_NOT_CONFIRMED_KOSI"
+
+# The supplied manual file includes this exact site and its district/river/basin
+# metadata. A source-issued station ID and danger threshold remain unverified.
+stations:
+  - name: "Birpur Barrage"
+    station_id: null # TODO: obtain the official station ID; do not use row serial numbers.
+    source_station_name: "Birpur Barrage"
+    district: "Supaul"
+    block: "Birpur"
+    river: "Kosi"
+    basin: "Kosi"
+    target_variable: "discharge"
+    longitude: null
+    latitude: null
+    danger_level: null # TODO: verified discharge danger threshold in m3/s.
+    danger_level_source: null # TODO: official source/document and effective date.
+
+lead_times_hours: [24, 48, 72]
+
+# TODO: Supply operationally justified real-data thresholds, not invented values.
+rainfall_threshold_mm: null
+upstream_discharge_threshold: null
+
+# Chronological year holdout based on actual Birpur coverage:
+# train 2022-2023; test 2024-2025 (2025 is only available through May 31).
+# Training code purges train rows whose 72-hour label horizon would overlap test.
+# This gives only one complete held-out monsoon season (2024); treat metrics as
+# preliminary and add more historical years before claiming model performance.
+train_test_seasons:
+  train: [2022, 2023]
+  test: [2024, 2025]
+
+paths:
+  raw: "ml/data/raw"
+  processed: "ml/data/processed"
+  models: "ml/training/models"
+  evaluation_results: "ml/evaluation/results"
+
+# The manual file is compatible with the source-aware loader. Rainfall and an
+# additional upstream discharge series were not supplied; these lists may stay
+# empty while training on Birpur's own discharge history.
+gauge_files:
+  - "bihar_sw_daily_discharge_manual.csv"
+upstream_discharge_files: []
+rainfall_files: []

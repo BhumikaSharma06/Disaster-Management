@@ -1,0 +1,46 @@
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-aapdasetu}
+      POSTGRES_USER: ${POSTGRES_USER:-aapdasetu}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-for-local-development}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-aapdasetu} -d ${POSTGRES_DB:-aapdasetu}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    environment:
+      BASIN_NAME: ${BASIN_NAME:-Lower Kosi Sub-Basin}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-aapdasetu}:${POSTGRES_PASSWORD:-change-me-for-local-development}@db:5432/${POSTGRES_DB:-aapdasetu}
+      BHASHINI_USER_ID: ${BHASHINI_USER_ID:-}
+      BHASHINI_ULCA_API_KEY: ${BHASHINI_ULCA_API_KEY:-}
+      BHASHINI_PIPELINE_ENDPOINTS: ${BHASHINI_PIPELINE_ENDPOINTS:-{}}
+    ports:
+      - "127.0.0.1:${API_PORT:-8001}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-5174}:5173"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
