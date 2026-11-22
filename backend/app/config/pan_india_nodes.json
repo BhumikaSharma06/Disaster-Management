@@ -1,0 +1,30 @@
+{
+  "sentinels": [
+    {"basin":"Ganga","region":"Upper Ganga","latitude":30.3165,"longitude":78.0322,"hazards":["flood","landslide"]},
+    {"basin":"Ganga","region":"Middle Ganga","latitude":25.4358,"longitude":81.8463,"hazards":["flood","heatwave"]},
+    {"basin":"Ganga","region":"Lower Ganga","latitude":22.5726,"longitude":88.3639,"hazards":["flood","cyclone"]},
+    {"basin":"Brahmaputra","region":"Assam Valley","latitude":26.1445,"longitude":91.7362,"hazards":["flood","landslide"]},
+    {"basin":"Kosi","region":"North Bihar","latitude":26.5200,"longitude":86.9167,"hazards":["flood"]},
+    {"basin":"Godavari","region":"Godavari Delta","latitude":16.9667,"longitude":81.7667,"hazards":["flood","cyclone","drought"]},
+    {"basin":"Krishna","region":"Krishna Delta","latitude":16.1800,"longitude":81.1400,"hazards":["flood","cyclone","drought"]},
+    {"basin":"Mahanadi","region":"Odisha Coast","latitude":20.2961,"longitude":85.8245,"hazards":["flood","cyclone"]},
+    {"basin":"Narmada","region":"Central Narmada","latitude":22.7196,"longitude":75.8577,"hazards":["flood","drought"]},
+    {"basin":"Rajasthan","region":"Jaipur District","latitude":26.9124,"longitude":75.7873,"hazards":["heatwave","drought","flood"]},
+    {"basin":"Rajasthan","region":"Jodhpur District","latitude":26.2389,"longitude":73.0243,"hazards":["heatwave","drought"]},
+    {"basin":"Rajasthan","region":"Kota District","latitude":25.2138,"longitude":75.8648,"hazards":["heatwave","drought","flood"]},
+    {"basin":"Yamuna","region":"National Capital Region","latitude":28.6139,"longitude":77.2090,"hazards":["heatwave","drought","flood"]},
+    {"basin":"Tapi","region":"South Gujarat","latitude":21.1702,"longitude":72.8311,"hazards":["cyclone","flood","drought"]},
+    {"basin":"Cauvery","region":"Tamil Nadu Inland","latitude":10.7905,"longitude":78.7047,"hazards":["drought","flood"]},
+    {"basin":"Penner","region":"Andhra Interior","latitude":14.4426,"longitude":78.8272,"hazards":["drought","heatwave"]},
+    {"basin":"Himalayan","region":"Himachal Landslide Belt","latitude":31.1048,"longitude":77.1734,"hazards":["landslide","flood"]},
+    {"basin":"Himalayan","region":"Uttarakhand Landslide Belt","latitude":30.0668,"longitude":79.0193,"hazards":["landslide","flood"]},
+    {"basin":"Himalayan","region":"Sikkim Landslide Belt","latitude":27.3389,"longitude":88.6065,"hazards":["landslide","flood"]},
+    {"basin":"Coastal","region":"Gujarat West Coast","latitude":22.4707,"longitude":70.0577,"hazards":["cyclone"]},
+    {"basin":"Coastal","region":"Konkan Coast","latitude":15.2993,"longitude":74.1240,"hazards":["cyclone","flood"]},
+    {"basin":"Coastal","region":"Andhra East Coast","latitude":16.5062,"longitude":80.6480,"hazards":["cyclone","flood"]},
+    {"basin":"Coastal","region":"Tamil Nadu Coast","latitude":13.0827,"longitude":80.2707,"hazards":["cyclone","flood"]},
+    {"basin":"Drought","region":"Marathwada","latitude":19.8762,"longitude":75.3433,"hazards":["drought","heatwave"]},
+    {"basin":"Drought","region":"Rayalaseema","latitude":14.6819,"longitude":77.6006,"hazards":["drought","heatwave"]},
+    {"basin":"Drought","region":"Bundelkhand","latitude":25.4358,"longitude":78.6115,"hazards":["drought","heatwave"]}
+  ]
+}

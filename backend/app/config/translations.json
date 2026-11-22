@@ -1,0 +1,25 @@
+{
+  "hi": {
+    "Flood risk is elevated near this sentinel.": "इस निगरानी स्थल के पास बाढ़ का जोखिम बढ़ा हुआ है।",
+    "No elevated flood risk detected in this prototype sample.": "इस नमूने में बढ़े हुए बाढ़ जोखिम का पता नहीं चला।",
+    "Move to higher ground and avoid walking or driving through flood water.": "ऊंचे स्थान पर जाएं और बाढ़ के पानी में चलने या वाहन चलाने से बचें।",
+    "Follow instructions from authorized local emergency services.": "अधिकृत स्थानीय आपातकालीन सेवाओं के निर्देशों का पालन करें।",
+    "dispatched": "भेजा गया",
+    "pending": "लंबित"
+  },
+  "bn": {
+    "Flood risk is elevated near this sentinel.": "এই পর্যবেক্ষণ বিন্দুতে বন্যার ঝুঁকি বাড়ছে।",
+    "Follow instructions from authorized local emergency services.": "অনুমোদিত স্থানীয় জরুরি সেবার নির্দেশনা মেনে চলুন।"
+  },
+  "mai": {"Follow instructions from authorized local emergency services.": "अधिकृत स्थानीय आपातकालीन सेवा के निर्देशक पालन करू।"},
+  "ta": {"Follow instructions from authorized local emergency services.": "அங்கீகரிக்கப்பட்ட உள்ளூர் அவசர சேவைகளின் அறிவுறுத்தலைப் பின்பற்றவும்."},
+  "te": {"Follow instructions from authorized local emergency services.": "అధికారిక స్థానిక అత్యవసర సేవల సూచనలను అనుసరించండి."},
+  "mr": {"Follow instructions from authorized local emergency services.": "मान्यताप्राप्त स्थानिक आपत्कालीन सेवांच्या सूचना पाळा."},
+  "gu": {"Follow instructions from authorized local emergency services.": "સત્તાવાર સ્થાનિક জরুরি સેવાઓની સૂચનાઓનું પાલન કરો."},
+  "kn": {"Follow instructions from authorized local emergency services.": "ಅಧಿಕೃತ ಸ್ಥಳೀಯ ತುರ್ತು ಸೇವೆಗಳ ಸೂಚನೆಗಳನ್ನು ಅನುಸರಿಸಿ."},
+  "ml": {"Follow instructions from authorized local emergency services.": "അധികൃത പ്രാദേശിക അടിയന്തിര സേവനങ്ങളുടേതുള്ള നിർദ്ദേശങ്ങൾ പാലിക്കുക."},
+  "or": {"Follow instructions from authorized local emergency services.": "ଅଧିକୃତ ସ୍ଥାନୀୟ ଜରୁରୀକାଳୀନ ସେବାର ନିର୍ଦ୍ଦେଶ ମାନନ୍ତୁ।"},
+  "pa": {"Follow instructions from authorized local emergency services.": "ਅਧਿਕਾਰਤ ਸਥਾਨਕ ਐਮਰਜੈਂਸੀ ਸੇਵਾਵਾਂ ਦੀਆਂ ਹਦਾਇਤਾਂ ਦੀ ਪਾਲਣਾ ਕਰੋ।"},
+  "as": {"Follow instructions from authorized local emergency services.": "স্বীকৃত স্থানীয় জৰুৰীকালীন সেৱাৰ নির্দেশনা মানি চলক।"},
+  "ur": {"Follow instructions from authorized local emergency services.": "مجاز مقامی ایمرجنسی خدمات کی ہدایات پر عمل کریں۔"}
+}

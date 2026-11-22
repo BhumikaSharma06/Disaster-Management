@@ -12,9 +12,7 @@ class Match(Base):
     __tablename__ = "matches"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    sos_request_id: Mapped[int] = mapped_column(
-        ForeignKey("sos_requests.id"), nullable=False
-    )
+    sos_request_id: Mapped[int] = mapped_column(ForeignKey("sos_requests.id"), nullable=False)
     volunteer_offer_id: Mapped[int] = mapped_column(
         ForeignKey("volunteer_offers.id"), nullable=False
     )

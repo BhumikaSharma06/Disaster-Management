@@ -9,9 +9,7 @@ class BhasiniClient:
     def __init__(self, config: Settings) -> None:
         self._config = config
 
-    async def translate(
-        self, text: str, source_language: str, target_language: str
-    ) -> str:
+    async def translate(self, text: str, source_language: str, target_language: str) -> str:
         """Translate text after the approved Bhashini contract is configured.
 
         Endpoint names, request payloads, and response formats are intentionally

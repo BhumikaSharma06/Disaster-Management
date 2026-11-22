@@ -2,7 +2,7 @@
 
 from collections.abc import Iterator
 
-from sqlalchemy import Engine, create_engine, text
+from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.core.config import settings
@@ -29,20 +29,3 @@ def get_db() -> Iterator[Session]:
         yield session
     finally:
         session.close()
-
-
-def init_db(engine_instance: Engine | None = None) -> None:
-    """Initialize PostGIS extension and create all defined database tables."""
-    target_engine = engine_instance or engine
-
-    # In PostgreSQL, enable PostGIS extension first
-    if target_engine.dialect.name == "postgresql":
-        with target_engine.connect() as conn:
-            conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis;"))
-            conn.commit()
-
-    # Import all models to ensure they are registered with Base.metadata
-    import app.models  # noqa: F401
-
-    Base.metadata.create_all(bind=target_engine)
-

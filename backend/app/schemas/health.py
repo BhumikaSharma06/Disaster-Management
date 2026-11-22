@@ -9,3 +9,10 @@ class HealthResponse(BaseModel):
     """Simple liveness status."""
 
     status: Literal["ok"]
+
+
+class ReadinessResponse(BaseModel):
+    """Database readiness status."""
+
+    status: Literal["ready", "not_ready"]
+    database: Literal["ok", "unavailable"]

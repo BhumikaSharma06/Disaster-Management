@@ -24,9 +24,7 @@ def _synthetic_frames() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
 
 def test_features_do_not_change_when_future_stage_changes() -> None:
     gauge, rainfall, upstream = _synthetic_frames()
-    features_before, _ = build_features(
-        gauge, rainfall, upstream, (24, 48, 72), 12.0
-    )
+    features_before, _ = build_features(gauge, rainfall, upstream, (24, 48, 72), 12.0)
 
     gauge_changed = gauge.copy()
     gauge_changed.loc[gauge_changed.index[-1], "stage"] = 999.0

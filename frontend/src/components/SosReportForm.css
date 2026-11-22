@@ -1,0 +1,95 @@
+.sos-report-card {
+  display: grid;
+  gap: 18px;
+  margin-bottom: 24px;
+  padding: 22px;
+  color: #17333a;
+  background: #fff;
+  border: 1px solid #e1aaa5;
+  border-left: 5px solid #c9473d;
+  border-radius: 12px;
+}
+
+.sos-report-card h2,
+.sos-report-card p {
+  margin-top: 0;
+}
+
+.sos-report-card h2 {
+  margin-bottom: 6px;
+}
+
+.sos-report-card form,
+.sos-report-fields {
+  display: grid;
+  gap: 14px;
+}
+
+.sos-report-fields {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.sos-report-card label {
+  display: grid;
+  gap: 6px;
+  color: #21444b;
+  font-weight: 600;
+}
+
+.sos-report-card input,
+.sos-report-card select,
+.sos-report-card textarea {
+  width: 100%;
+  min-height: 42px;
+  padding: 9px 11px;
+  color: #17333a;
+  background: #fff;
+  border: 1px solid #aebfc2;
+  border-radius: 7px;
+  font: inherit;
+}
+
+.sos-report-card textarea {
+  resize: vertical;
+}
+
+.sos-report-description {
+  grid-column: 1 / -1;
+}
+
+.sos-report-eyebrow {
+  margin-bottom: 6px;
+  color: #a93630;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.sos-report-location {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.sos-report-location span {
+  color: #496268;
+  font-size: 0.9rem;
+}
+
+.sos-report-error {
+  margin: 0;
+  color: #a42f27;
+}
+
+.sos-report-success {
+  margin: 0;
+  color: #176345;
+  font-weight: 700;
+}
+
+@media (max-width: 640px) {
+  .sos-report-fields {
+    grid-template-columns: 1fr;
+  }
+}

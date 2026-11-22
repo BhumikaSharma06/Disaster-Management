@@ -1,148 +1,34 @@
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import GeographyCatalog from "./GeographyCatalog.jsx";
+import { getCoreStatus, getLiveForecasts, getShelters, getSosRequests } from "../api/geography.js";
+import { getCoordinationSummary, moderateHelpRequest } from "../api/coordination.js";
+import {
+  createIncident,
+  getIncidentOperations,
+  getIncidents,
+  updateIncidentShelter,
+  updateIncidentSos,
+  updateIncidentStatus,
+} from "../api/eoc.js";
 import "./EOCDashboard.css";
 
-// 14 Designated Shelters with real-world coordinates and capacities from seed.py
-const INITIAL_SHELTERS = [
-  // Supaul
-  { id: "s1", name: "Birpur Model High School & Flood Shelter", district: "Supaul", capacity: 600, occupied: 410, lon: 86.935, lat: 26.52, medicalStaff: 4, foodDays: 4, contact: "+91-6275-224101", status: "operational" },
-  { id: "s2", name: "Supaul Zila High School Relief Centre", district: "Supaul", capacity: 850, occupied: 720, lon: 86.605, lat: 26.126, medicalStaff: 6, foodDays: 3, contact: "+91-6275-222450", status: "operational" },
-  { id: "s3", name: "Nirmali Community Disaster Centre", district: "Supaul", capacity: 450, occupied: 415, lon: 86.592, lat: 26.315, medicalStaff: 3, foodDays: 2, contact: "+91-6275-231120", status: "near_full" },
-  { id: "s4", name: "Pipra Block Relief Camp", district: "Supaul", capacity: 400, occupied: 290, lon: 86.72, lat: 26.18, medicalStaff: 2, foodDays: 5, contact: "+91-6275-245300", status: "operational" },
-  // Saharsa
-  { id: "s5", name: "Saharsa Stadium Emergency Relief Camp", district: "Saharsa", capacity: 1200, occupied: 820, lon: 86.598, lat: 25.883, medicalStaff: 8, foodDays: 6, contact: "+91-6478-223400", status: "operational" },
-  { id: "s6", name: "Simri Bakhtiarpur High School", district: "Saharsa", capacity: 600, occupied: 510, lon: 86.583, lat: 25.75, medicalStaff: 4, foodDays: 3, contact: "+91-6478-241210", status: "operational" },
-  { id: "s7", name: "Nauhatta Panchayat Bhawan Shelter", district: "Saharsa", capacity: 350, occupied: 310, lon: 86.49, lat: 25.98, medicalStaff: 2, foodDays: 2, contact: "+91-6478-251009", status: "near_full" },
-  { id: "s8", name: "Mahishi Community Health Centre", district: "Saharsa", capacity: 400, occupied: 275, lon: 86.45, lat: 25.85, medicalStaff: 5, foodDays: 4, contact: "+91-6478-261150", status: "operational" },
-  // Madhepura
-  { id: "s9", name: "Madhepura Town Hall & Relief Camp", district: "Madhepura", capacity: 750, occupied: 390, lon: 86.79, lat: 25.922, medicalStaff: 5, foodDays: 5, contact: "+91-6476-222140", status: "operational" },
-  { id: "s10", name: "Alamnagar High School Flood Shelter", district: "Madhepura", capacity: 500, occupied: 430, lon: 86.9, lat: 25.55, medicalStaff: 3, foodDays: 3, contact: "+91-6476-234200", status: "operational" },
-  { id: "s11", name: "Chausa Community Disaster Relief Camp", district: "Madhepura", capacity: 400, occupied: 180, lon: 87.02, lat: 25.52, medicalStaff: 2, foodDays: 7, contact: "+91-6476-248100", status: "operational" },
-  // Purnia
-  { id: "s12", name: "Purnia Zila School Relief Center", district: "Purnia", capacity: 1000, occupied: 520, lon: 87.47, lat: 25.78, medicalStaff: 7, foodDays: 6, contact: "+91-6454-222300", status: "operational" },
-  { id: "s13", name: "Baisi Flood Evacuation Centre", district: "Purnia", capacity: 600, occupied: 420, lon: 87.75, lat: 25.833, medicalStaff: 4, foodDays: 4, contact: "+91-6454-235110", status: "operational" },
-  { id: "s14", name: "Dagarua High School Disaster Shelter", district: "Purnia", capacity: 450, occupied: 210, lon: 87.6, lat: 25.8, medicalStaff: 3, foodDays: 5, contact: "+91-6454-241080", status: "operational" },
-];
-
-// River Telemetry and Gauge Stations
-const GAUGE_STATIONS = [
-  { id: "g1", name: "Birpur Barrage (Kosi)", district: "Supaul", lon: 86.935, lat: 26.52, discharge: 8420, dangerLevel: 8000, warningLevel: 4500, status: "danger", trend: "+140 m³/s / hr", type: "discharge" },
-  { id: "g2", name: "Baltara Gauge (Kosi)", district: "Saharsa", lon: 86.75, lat: 25.68, waterLevel: 34.25, dangerLevel: 33.85, warningLevel: 33.15, status: "danger", trend: "+0.15 m / 3 hr", type: "stage" },
-  { id: "g3", name: "Kursela Gauge (Confluence)", district: "Katihar/Purnia", lon: 87.25, lat: 25.43, waterLevel: 30.8, dangerLevel: 31.4, warningLevel: 30.0, status: "warning", trend: "+0.08 m / 3 hr", type: "stage" },
-  { id: "g4", name: "Baisi Telemetry Station", district: "Purnia", lon: 87.75, lat: 25.83, waterLevel: 31.1, dangerLevel: 32.5, warningLevel: 31.5, status: "normal", trend: "Stable", type: "stage" },
-];
-
-// Active Emergency Distress SOS Requests
-const INITIAL_SOS_REQUESTS = [
-  {
-    id: "SOS-101",
-    district: "Supaul",
-    village: "Nirmali Ward 4 (Near Embankment)",
-    need: "Medical Evacuation",
-    severity: "critical",
-    score: 96,
-    people: 3,
-    details: "Elderly resident with acute respiratory distress, village access road submerged under 1.4m floodwater.",
-    time: "8 mins ago",
-    status: "pending",
-    lon: 86.595,
-    lat: 26.31,
-    matchedResponder: null,
-  },
-  {
-    id: "SOS-102",
-    district: "Supaul",
-    village: "Pipra Panchayat, Low-lying टोला",
-    need: "Rescue / Evacuation",
-    severity: "critical",
-    score: 93,
-    people: 5,
-    details: "Family including 2 infants marooned on tin rooftop. Water level rising fast near Kosi bend.",
-    time: "14 mins ago",
-    status: "pending",
-    lon: 86.71,
-    lat: 26.175,
-    matchedResponder: null,
-  },
-  {
-    id: "SOS-103",
-    district: "Saharsa",
-    village: "Mahishi Block, Diara Region",
-    need: "Clean Water & Dry Ration",
-    severity: "high",
-    score: 82,
-    people: 18,
-    details: "Handpumps inundated, no potable water for 24 hours. Diarrhea outbreak concern.",
-    time: "32 mins ago",
-    status: "pending",
-    lon: 86.46,
-    lat: 25.86,
-    matchedResponder: null,
-  },
-  {
-    id: "SOS-104",
-    district: "Saharsa",
-    village: "Simri Bakhtiarpur, Southern Ring",
-    need: "Medical Evacuation",
-    severity: "critical",
-    score: 91,
-    people: 2,
-    details: "Full-term pregnant woman needing transport to Saharsa District Hospital. Bridge approach cut off.",
-    time: "41 mins ago",
-    status: "dispatched",
-    lon: 86.575,
-    lat: 25.74,
-    matchedResponder: { name: "SDRF Rescue Inflatable #3", eta: "10 mins", phone: "+91-98012-33410" },
-  },
-  {
-    id: "SOS-105",
-    district: "Madhepura",
-    village: "Alamnagar Diara Settlement",
-    need: "Cattle & Family Evacuation",
-    severity: "moderate",
-    score: 72,
-    people: 8,
-    details: "Livestock and 8 farmers on raised agricultural bandh. Water stable but fodder exhausted.",
-    time: "1 hr ago",
-    status: "pending",
-    lon: 86.885,
-    lat: 25.56,
-    matchedResponder: null,
-  },
-];
-
-// Available First Responders & Volunteer Assets
-const RESCUE_ASSETS = [
-  { id: "r1", name: "NDRF Motorized Boat #2", base: "Nirmali Block HQ", district: "Supaul", capacity: 8, lon: 86.592, lat: 26.315, status: "available", contact: "+91-94318-00102" },
-  { id: "r2", name: "SDRF Quick Response Platoon 1", base: "Supaul Police Lines", district: "Supaul", capacity: 12, lon: 86.605, lat: 26.126, status: "available", contact: "+91-94318-00105" },
-  { id: "r3", name: "Pipra Disaster Volunteer Squad", base: "Pipra Middle School", district: "Supaul", capacity: 6, lon: 86.72, lat: 26.18, status: "available", contact: "+91-98350-22100" },
-  { id: "r4", name: "SDRF Motorized Boat #5", base: "Saharsa Stadium Camp", district: "Saharsa", capacity: 10, lon: 86.598, lat: 25.883, status: "available", contact: "+91-94318-00201" },
-  { id: "r5", name: "Alamnagar Flood Relief Boat #1", base: "Alamnagar Thana", district: "Madhepura", capacity: 8, lon: 86.9, lat: 25.55, status: "available", contact: "+91-94318-00304" },
-];
-
-// 72-Hour ML Hydrograph Discharge Forecast (Birpur Barrage)
-const HYDROGRAPH_SERIES = [
-  { time: "-48h", discharge: 5200, label: "T-48h" },
-  { time: "-36h", discharge: 5850, label: "T-36h" },
-  { time: "-24h", discharge: 6700, label: "T-24h" },
-  { time: "-12h", discharge: 7600, label: "T-12h" },
-  { time: "Now", discharge: 8420, label: "Current (Danger)", isNow: true },
-  { time: "+12h", discharge: 8750, label: "+12h Forecast", isForecast: true },
-  { time: "+24h", discharge: 8850, label: "+24h (XGBoost)", isForecast: true },
-  { time: "+48h", discharge: 9120, label: "+48h (Peak Crest)", isForecast: true },
-  { time: "+72h", discharge: 7940, label: "+72h (Receding)", isForecast: true },
-];
+function parseCoordinate(value) {
+  if (value === null || value === undefined || value === "") return Number.NaN;
+  const coordinate = Number(value);
+  return Number.isFinite(coordinate) ? coordinate : Number.NaN;
+}
 
 // Multilingual CAP Warning Broadcasts
 const CAP_BROADCAST_TEMPLATES = {
   extreme: {
-    en: "FLASH RED ALERT: Severe flood surge exceeding 8,400 m³/s at Birpur Barrage. Embankment risk in Supaul & Saharsa. Evacuate low-lying river areas immediately to designated high-ground shelters. Dial 112 for rescue.",
-    hi: "अत्यधिक गंभीर चेतावनी (रेड अलर्ट): बीरपुर बैराज पर कोसी का बहाव 8,400 घनमीटर/सेकंड पार कर गया है। सुपौल और सहरसा में तटबंध के निचले इलाके तुरंत खाली कर सुरक्षित आश्रय स्थलों पर पहुँचे। सहायता हेतु 112 डायल करें।",
-    mai: "अत्यंत गंभीर चेतावनी (लाल चेतावनी): बीरपुर बैराज पर कोसीक पानि 8,400 घनमीटर/सेकंडसँ बेसी भ गेल अछि। सुपौल आ सहरसा मे तटबंधक निचुलका गाम तुरंत खाली कए ऊँच शरणस्थल जाउ। मद्दति लेल 112 पर फोन करू।",
+    en: "SAMPLE PREVIEW — This sample is not an official warning or confirmation of a current disaster. Follow verified instructions from local authorities.",
+    hi: "केवल नमूना — यह आधिकारिक चेतावनी या वर्तमान आपदा की पुष्टि नहीं है। स्थानीय अधिकारियों के सत्यापित निर्देशों का पालन करें।",
+    mai: "केवल नमूना — ई आधिकारिक चेतावनी वा वर्तमान आपदाक पुष्टि नहि अछि। स्थानीय अधिकारीक सत्यापित निर्देश मानू।",
   },
   warning: {
-    en: "FLOOD WATCH: Upstream Kosi water discharge rising rapidly. Residents of Supaul, Saharsa, and Madhepura riverine areas should prepare emergency kits, secure cattle, and locate nearest shelters.",
-    hi: "बाढ़ सतर्कता (ऑरेंज अलर्ट): ऊपरी कोसी में जलप्रवाह तेजी से बढ़ रहा है। सुपौल, सहरसा और मधेपुरा के तटबंधीय क्षेत्रों के नागरिक जरूरी दवाइयाँ, आवश्यक सामान सुरक्षित रखें और नजदीकी राहत शिविरों की जानकारी रखें।",
-    mai: "बाढ़ि सतर्कता: कोसी मे जलप्रवाह तेजीसँ बढ़ि रहल अछि। सुपौल, सहरसा आ मधेपुराक नदी कछार केर लोक जरूरी सामान सुरक्षित राखू आ नजदीकी शरणस्थल पर नजरि राखू।",
+    en: "SAMPLE PREVIEW — Keep essential medicines and emergency contacts ready. This sample is not an active alert; check verified local sources for current guidance.",
+    hi: "केवल नमूना — आवश्यक दवाइयाँ और आपातकालीन संपर्क तैयार रखें। यह सक्रिय चेतावनी नहीं है; वर्तमान जानकारी के लिए स्थानीय सत्यापित स्रोत देखें।",
+    mai: "केवल नमूना — जरूरी दवा आ आपातकालीन संपर्क तैयार राखू। ई सक्रिय चेतावनी नहि अछि; वर्तमान जानकारी लेल स्थानीय सत्यापित स्रोत देखू।",
   },
 };
 
@@ -166,29 +52,290 @@ function getAvailableSpeechVoices(synthesis) {
   });
 }
 
-export default function EOCDashboard({ language = "en" }) {
+export default function EOCDashboard({
+  language = "en",
+  onCoordinationUpdated,
+  canModerate = false,
+  canManageIncidents = false,
+}) {
   const [activeTab, setActiveTab] = useState("map");
-  const [selectedDistrict, setSelectedDistrict] = useState("all");
-  const [inundationLevel, setInundationLevel] = useState(75); // 0 to 100%
   const [selectedFeature, setSelectedFeature] = useState(null);
-  const [sosList, setSosList] = useState(INITIAL_SOS_REQUESTS);
-  const [sheltersList, setSheltersList] = useState(INITIAL_SHELTERS);
+  const [incidents, setIncidents] = useState([]);
+  const [selectedIncidentId, setSelectedIncidentId] = useState("");
+  const [availableShelters, setAvailableShelters] = useState([]);
+  const [selectedCatalogShelterId, setSelectedCatalogShelterId] = useState("");
+  const [sosList, setSosList] = useState([]);
+  const [sheltersList, setSheltersList] = useState([]);
+  const [backendStatus, setBackendStatus] = useState(null);
+  const [liveForecasts, setLiveForecasts] = useState([]);
+  const [forecastAvailable, setForecastAvailable] = useState(false);
+  const [dashboardLoading, setDashboardLoading] = useState(true);
+  const [dashboardError, setDashboardError] = useState("");
+  const [dashboardFetchedAt, setDashboardFetchedAt] = useState(null);
+  const [liveOperationsFetchedAt, setLiveOperationsFetchedAt] = useState(null);
+  const [operationError, setOperationError] = useState("");
+  const [incidentFormOpen, setIncidentFormOpen] = useState(false);
+  const [incidentFormError, setIncidentFormError] = useState("");
+  const [incidentForm, setIncidentForm] = useState({
+    title: "",
+    hazard_type: "flood",
+    area_name: "",
+    description: "",
+  });
+  const [shelterUpdates, setShelterUpdates] = useState({});
+  const [recordActionError, setRecordActionError] = useState("");
+  const [sosSeverityFilter, setSosSeverityFilter] = useState("all");
+  const [sosStatusFilter, setSosStatusFilter] = useState("all");
+  const [shelterOccupancyFilter, setShelterOccupancyFilter] = useState("all");
+  const dashboardControllerRef = useRef(null);
+  const [coordinationSummary, setCoordinationSummary] = useState(null);
+  const [coordinationLoading, setCoordinationLoading] = useState(true);
+  const [coordinationError, setCoordinationError] = useState("");
   const [layerFilters, setLayerFilters] = useState({
-    inundation: true,
     shelters: true,
     stations: true,
     sos: true,
-    corridors: true,
   });
 
   // CAP broadcast form
-  const [broadcastTarget, setBroadcastTarget] = useState("Supaul & Saharsa");
   const [broadcastSeverity, setBroadcastSeverity] = useState("extreme");
   const [broadcastPrepared, setBroadcastPrepared] = useState(false);
   const [speakingLanguage, setSpeakingLanguage] = useState(null);
   const [speechNotice, setSpeechNotice] = useState("");
   const speechUtteranceRef = useRef(null);
   const speechRequestRef = useRef(0);
+
+  const loadDashboard = useCallback(async (
+    refresh = false,
+    requestedIncidentId = selectedIncidentId,
+    showLoading = true,
+  ) => {
+    dashboardControllerRef.current?.abort();
+    const controller = new AbortController();
+    dashboardControllerRef.current = controller;
+    if (showLoading) setDashboardLoading(true);
+    setDashboardError("");
+    try {
+      const [status, forecasts, shelterRecords, incidentRecords] = await Promise.all([
+        getCoreStatus(controller.signal),
+        getLiveForecasts(refresh, controller.signal),
+        getShelters(null, controller.signal),
+        getIncidents(controller.signal),
+      ]);
+
+      const activeIncidents = incidentRecords.filter((incident) => incident.status !== "closed");
+      const selectedIncident = activeIncidents.find(
+        (incident) => String(incident.id) === String(requestedIncidentId),
+      ) || activeIncidents[0] || null;
+      const nextIncidentId = selectedIncident ? String(selectedIncident.id) : "";
+      if (nextIncidentId !== selectedIncidentId) setSelectedIncidentId(nextIncidentId);
+      setIncidents(incidentRecords);
+
+      const [sosData, incidentOperations] = await Promise.all([
+        selectedIncident
+          ? Promise.resolve(null)
+          : getSosRequests(controller.signal, true),
+        selectedIncident
+          ? getIncidentOperations(selectedIncident.id, controller.signal)
+          : Promise.resolve(null),
+      ]);
+      setBackendStatus(status);
+      setForecastAvailable(forecasts.available);
+      setLiveForecasts(forecasts.available ? forecasts.forecasts : []);
+      setOperationError("");
+      setLiveOperationsFetchedAt(
+        incidentOperations?.fetched_at || null,
+      );
+      const sosRecords = incidentOperations?.sos ?? sosData?.requests ?? [];
+      setSosList(
+        sosRecords.map((request) => ({
+          id: `SOS-${request.id}`,
+          sosId: request.id,
+          district: selectedIncident?.area_name || "Area not provided",
+          village: request.description || request.need_type,
+          need: request.need_type,
+          severity: request.urgency === "urgent" ? "critical" : request.urgency,
+          people: request.people_affected ?? null,
+          details: request.description || "No additional details supplied.",
+          time: request.created_at
+            ? new Date(request.created_at).toLocaleString()
+            : null,
+          updatedAt: request.updated_at || null,
+          status: request.status,
+          lon: parseCoordinate(request.longitude),
+          lat: parseCoordinate(request.latitude),
+          matchedResponder: null,
+        })),
+      );
+      const shelterData = incidentOperations?.shelters || shelterRecords.map((shelter) => ({
+        id: shelter.id,
+        name: shelter.name,
+        capacity: shelter.capacity,
+        current_occupancy: shelter.current_occupancy,
+        source_name: shelter.source_name,
+        verification_status: shelter.verification_status,
+        region_id: shelter.region_id,
+        location: shelter.location,
+      }));
+      setAvailableShelters(incidentOperations?.available_shelters || []);
+      setSheltersList(shelterData.map((shelter) => {
+        const lon = parseCoordinate(
+          shelter.longitude ?? shelter.location?.coordinates?.[0],
+        );
+        const lat = parseCoordinate(
+          shelter.latitude ?? shelter.location?.coordinates?.[1],
+        );
+        const capacity = Number(shelter.capacity ?? 0);
+        const hasOccupancy = shelter.current_occupancy !== null
+          && shelter.current_occupancy !== undefined;
+        const occupied = hasOccupancy ? Number(shelter.current_occupancy) : null;
+        return {
+          id: `db-${shelter.id}`,
+          shelterId: shelter.id,
+          name: shelter.name,
+          district: selectedIncident?.area_name
+            || (shelter.region_id ? `Region ${shelter.region_id}` : "Area not provided"),
+          capacity,
+          occupied,
+          lon,
+          lat,
+          verificationStatus: shelter.verification_status,
+          sourceName: shelter.source_name,
+          operationalStatus: shelter.operational_status || null,
+          updateNote: shelter.update_note || "",
+          updatedAt: shelter.updated_at || null,
+          status: shelter.operational_status
+            || (capacity > 0 && occupied !== null && occupied / capacity >= 0.85
+              ? "near_full"
+              : "recorded"),
+        };
+      }).filter((shelter) => Number.isFinite(shelter.lon) && Number.isFinite(shelter.lat)));
+      setDashboardFetchedAt(new Date().toISOString());
+    } catch (error) {
+      if (error.name !== "AbortError") {
+        setDashboardError(error.message || "Could not load dashboard records.");
+        if (requestedIncidentId) setOperationError(error.message || "Could not load incident operations.");
+      }
+    } finally {
+      if (!controller.signal.aborted && showLoading) setDashboardLoading(false);
+    }
+  }, [selectedIncidentId]);
+
+  useEffect(() => {
+    loadDashboard(false);
+    return () => dashboardControllerRef.current?.abort();
+  }, [loadDashboard]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(
+      () => loadDashboard(false, selectedIncidentId, false),
+      15000,
+    );
+    return () => window.clearInterval(intervalId);
+  }, [loadDashboard, selectedIncidentId]);
+
+  async function submitIncident(event) {
+    event.preventDefault();
+    setIncidentFormError("");
+    try {
+      const incident = await createIncident(incidentForm);
+      setIncidentForm({
+        title: "",
+        hazard_type: "flood",
+        area_name: "",
+        description: "",
+      });
+      setIncidentFormOpen(false);
+      await loadDashboard(false, incident.id);
+    } catch (error) {
+      setIncidentFormError(error.message || "Could not create the incident.");
+    }
+  }
+
+  async function saveShelterUpdate(shelter) {
+    const values = shelterUpdates[shelter.shelterId] || {};
+    const hasOccupancyInput = Object.prototype.hasOwnProperty.call(values, "occupancy");
+    setRecordActionError("");
+    try {
+      await updateIncidentShelter(selectedIncidentId, shelter.shelterId, {
+        operational_status: values.status || shelter.operationalStatus || "unknown",
+        current_occupancy: hasOccupancyInput
+          ? values.occupancy === "" ? null : Number(values.occupancy)
+          : shelter.occupied,
+        update_note: values.note || null,
+      });
+      await loadDashboard(false, selectedIncidentId, false);
+    } catch (error) {
+      setRecordActionError(error.message || "Could not update shelter operations.");
+    }
+  }
+
+  async function saveSosStatus(sos, status) {
+    setRecordActionError("");
+    try {
+      await updateIncidentSos(selectedIncidentId, sos.sosId, status);
+      await loadDashboard(false, selectedIncidentId, false);
+    } catch (error) {
+      setRecordActionError(error.message || "Could not update the SOS record.");
+    }
+  }
+
+  async function linkCatalogShelter() {
+    if (!selectedIncidentId || !selectedCatalogShelterId) return;
+    setRecordActionError("");
+    try {
+      await updateIncidentShelter(selectedIncidentId, selectedCatalogShelterId, {
+        operational_status: "unknown",
+        current_occupancy: null,
+        update_note: null,
+      });
+      setSelectedCatalogShelterId("");
+      await loadDashboard(false, selectedIncidentId, false);
+    } catch (error) {
+      setRecordActionError(error.message || "Could not link the shelter to this incident.");
+    }
+  }
+
+  async function changeIncidentStatus(status) {
+    if (!selectedIncidentId) return;
+    setRecordActionError("");
+    try {
+      await updateIncidentStatus(selectedIncidentId, status);
+      await loadDashboard(false, status === "closed" ? "" : selectedIncidentId);
+    } catch (error) {
+      setRecordActionError(error.message || "Could not update incident status.");
+    }
+  }
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
+    async function refreshCoordination() {
+      if (active) setCoordinationLoading(true);
+      try {
+        const summary = await getCoordinationSummary(controller.signal);
+        if (active) {
+          setCoordinationSummary(summary);
+          setCoordinationError("");
+          onCoordinationUpdated?.();
+        }
+      } catch (error) {
+        if (active && error.name !== "AbortError") {
+          setCoordinationError(error.message || "Could not load live coordination records.");
+          setCoordinationSummary(null);
+        }
+      } finally {
+        if (active) setCoordinationLoading(false);
+      }
+    }
+    refreshCoordination();
+    const intervalId = window.setInterval(refreshCoordination, 30000);
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+      controller.abort();
+    };
+  }, [onCoordinationUpdated]);
 
   useEffect(() => () => {
     speechRequestRef.current += 1;
@@ -267,6 +414,17 @@ export default function EOCDashboard({ language = "en" }) {
     }
   }
 
+  async function moderateRequest(request, action, reason) {
+    setCoordinationError("");
+    try {
+      await moderateHelpRequest(request.id, action, reason);
+      setCoordinationSummary(await getCoordinationSummary());
+      onCoordinationUpdated?.();
+    } catch (error) {
+      setCoordinationError(error.message || "Could not update the help request.");
+    }
+  }
+
   function handleSpeechButton(text, languageKey) {
     if (speakingLanguage === languageKey) {
       window.speechSynthesis.cancel();
@@ -279,100 +437,127 @@ export default function EOCDashboard({ language = "en" }) {
     speakAlert(text, languageKey);
   }
 
-  const effectiveDischarge = 8420;
-
-  // Compute dynamic stats
+  // Keep unreported incident occupancy distinct from a measured zero.
   const stats = useMemo(() => {
     const totalShelterCapacity = sheltersList.reduce((acc, s) => acc + s.capacity, 0);
-    const totalOccupied = sheltersList.reduce((acc, s) => acc + s.occupied, 0);
-    const pendingSos = sosList.filter((s) => s.status === "pending").length;
-    const dispatchedSos = sosList.filter((s) => s.status === "dispatched").length;
-    const exposedPeople = Math.round((effectiveDischarge / 8000) * 342000);
+    const allOccupancyKnown = sheltersList.length > 0
+      && sheltersList.every((shelter) => shelter.capacity > 0 && shelter.occupied !== null);
+    const totalOccupied = sheltersList.reduce(
+      (acc, shelter) => acc + (shelter.occupied ?? 0),
+      0,
+    );
+    const pendingSos = sosList.filter((s) => ["pending", "open"].includes(s.status)).length;
+    const reportsWithPeopleCount = sosList.filter((s) => s.people !== null).length;
+    const peopleAffected = sosList.reduce((total, request) => total + (request.people || 0), 0);
+    const criticalSos = sosList.filter((s) =>
+      ["critical", "urgent"].includes(s.severity) && ["pending", "open"].includes(s.status),
+    );
+    const highOccupancyShelters = sheltersList.filter(
+      (shelter) =>
+        shelter.capacity > 0
+        && shelter.occupied !== null
+        && shelter.occupied / shelter.capacity >= 0.85,
+    );
+    const highestForecast = liveForecasts.reduce(
+      (highest, forecast) => (!highest || Number(forecast.score) > Number(highest.score) ? forecast : highest),
+      null,
+    );
 
     return {
-      discharge: effectiveDischarge,
-      dischargeDiff: effectiveDischarge - 8000,
       totalCapacity: totalShelterCapacity,
-      totalOccupied,
-      occupancyPct: Math.round((totalOccupied / totalShelterCapacity) * 100),
+      totalOccupied: allOccupancyKnown ? totalOccupied : null,
+      occupancyKnownCount: sheltersList.filter((shelter) => shelter.occupied !== null).length,
+      occupancyPct: totalShelterCapacity && allOccupancyKnown
+        ? Math.round((totalOccupied / totalShelterCapacity) * 100)
+        : null,
       pendingSos,
-      dispatchedSos,
-      exposedPeople: Math.max(45000, exposedPeople),
-      activeResponders: RESCUE_ASSETS.filter((asset) => asset.status === "available").length,
+      peopleAffected: reportsWithPeopleCount ? peopleAffected : null,
+      sosRecordsWithoutPeopleCount: sosList.length - reportsWithPeopleCount,
+      criticalSos,
+      highOccupancyShelters,
+      liveForecastCount: liveForecasts.length,
+      highestForecast,
     };
-  }, [sheltersList, sosList, effectiveDischarge]);
+  }, [sheltersList, sosList, liveForecasts]);
 
-  // Auto-Match algorithm for SOS: Finds closest available asset
-  function handleAutoMatch(sosId) {
-    const targetSos = sosList.find((s) => s.id === sosId);
-    if (!targetSos) return;
+  const mapBounds = useMemo(() => {
+    const points = [
+      ...(selectedIncidentId ? [] : liveForecasts),
+      ...sheltersList,
+      ...sosList,
+    ].filter((item) => Number.isFinite(parseCoordinate(item.longitude ?? item.lon))
+      && Number.isFinite(parseCoordinate(item.latitude ?? item.lat)));
+    if (!points.length) return null;
+    const longitudes = points.map((point) => parseCoordinate(point.longitude ?? point.lon));
+    const latitudes = points.map((point) => parseCoordinate(point.latitude ?? point.lat));
+    const longitudeSpan = Math.max(...longitudes) - Math.min(...longitudes);
+    const latitudeSpan = Math.max(...latitudes) - Math.min(...latitudes);
+    return {
+      minLon: Math.min(...longitudes) - Math.max(longitudeSpan * 0.1, 0.01),
+      maxLon: Math.max(...longitudes) + Math.max(longitudeSpan * 0.1, 0.01),
+      minLat: Math.min(...latitudes) - Math.max(latitudeSpan * 0.1, 0.01),
+      maxLat: Math.max(...latitudes) + Math.max(latitudeSpan * 0.1, 0.01),
+    };
+  }, [liveForecasts, sheltersList, sosList, selectedIncidentId]);
 
-    // Filter available assets in same district or nearby
-    const candidates = RESCUE_ASSETS.filter((a) => a.status === "available");
-    if (candidates.length === 0) {
-      alert("No available first responder assets currently in range.");
-      return;
-    }
-
-    // Euclidean distance calculation (lon, lat)
-    const sorted = [...candidates].sort((a, b) => {
-      const distA = Math.hypot(a.lon - targetSos.lon, a.lat - targetSos.lat);
-      const distB = Math.hypot(b.lon - targetSos.lon, b.lat - targetSos.lat);
-      return distA - distB;
-    });
-
-    const bestMatch = sorted[0];
-    const distanceKm = (Math.hypot(bestMatch.lon - targetSos.lon, bestMatch.lat - targetSos.lat) * 111).toFixed(2);
-    const etaMin = Math.max(5, Math.round(distanceKm * 6));
-
-    setSosList((prev) =>
-      prev.map((item) =>
-        item.id === sosId
-          ? {
-              ...item,
-              matchedResponder: {
-                name: bestMatch.name,
-                base: bestMatch.base,
-                distance: `${distanceKm} km`,
-                eta: `${etaMin} mins`,
-                phone: bestMatch.contact,
-              },
-            }
-          : item
-      )
-    );
-  }
-
-  // Dispatch Responder
-  function handleDispatch(sosId) {
-    setSosList((prev) =>
-      prev.map((item) => (item.id === sosId ? { ...item, status: "dispatched" } : item))
-    );
-  }
-
-  // Transform lon/lat into SVG coordinates
-  // Bounds: lon 86.30 to 87.90 (span 1.6), lat 25.35 to 26.70 (span 1.35)
   function project(lon, lat) {
-    const x = ((lon - 86.3) / 1.6) * 820 + 40;
-    const y = 560 - ((lat - 25.35) / 1.35) * 510;
+    if (!mapBounds) return { x: 450, y: 300 };
+    const x = ((lon - mapBounds.minLon) / (mapBounds.maxLon - mapBounds.minLon)) * 820 + 40;
+    const y = 560 - ((lat - mapBounds.minLat) / (mapBounds.maxLat - mapBounds.minLat)) * 510;
     return { x, y };
   }
 
-  // Filtered lists according to selected district
   const filteredShelters = useMemo(() => {
-    if (selectedDistrict === "all") return sheltersList;
-    return sheltersList.filter((s) => s.district === selectedDistrict);
-  }, [sheltersList, selectedDistrict]);
+    if (shelterOccupancyFilter === "all") return sheltersList;
+    return sheltersList.filter((shelter) => {
+      if (!shelter.capacity || shelter.occupied === null) return false;
+      const occupancy = shelter.occupied / shelter.capacity;
+      return shelterOccupancyFilter === "high" ? occupancy >= 0.85 : occupancy < 0.85;
+    });
+  }, [sheltersList, shelterOccupancyFilter]);
 
   const filteredGauges = useMemo(() => {
-    if (selectedDistrict === "all") return GAUGE_STATIONS;
-    return GAUGE_STATIONS.filter((g) => g.district.includes(selectedDistrict));
-  }, [selectedDistrict]);
+    if (selectedIncidentId) return [];
+    return liveForecasts.filter((forecast) =>
+      Number.isFinite(parseCoordinate(forecast.longitude))
+      && Number.isFinite(parseCoordinate(forecast.latitude)),
+    ).map((forecast, index) => ({
+      id: `provider-${index}`,
+      name: `${forecast.region} Sentinel`,
+      district: forecast.region || "Pan-India",
+      lon: parseCoordinate(forecast.longitude),
+      lat: parseCoordinate(forecast.latitude),
+      status:
+        forecast.level === "red"
+          ? "danger"
+          : forecast.level === "orange"
+            ? "warning"
+            : "normal",
+      score: forecast.score,
+    }));
+  }, [liveForecasts, selectedIncidentId]);
 
   const filteredSos = useMemo(() => {
-    if (selectedDistrict === "all") return sosList;
-    return sosList.filter((s) => s.district === selectedDistrict);
-  }, [sosList, selectedDistrict]);
+    return sosList.filter((sos) =>
+      (sosSeverityFilter === "all" || sos.severity === sosSeverityFilter)
+      && (sosStatusFilter === "all" || sos.status === sosStatusFilter),
+    );
+  }, [sosList, sosSeverityFilter, sosStatusFilter]);
+  const selectedIncident = incidents.find(
+    (incident) => String(incident.id) === selectedIncidentId,
+  ) || null;
+
+  function openFeature(type, data) {
+    setSelectedFeature({ type, data });
+    setActiveTab("map");
+  }
+
+  function handleMapMarkerKey(event, type, data) {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      openFeature(type, data);
+    }
+  }
 
   return (
     <div className="eoc-root">
@@ -385,91 +570,392 @@ export default function EOCDashboard({ language = "en" }) {
           </div>
           <div>
             <div className="eoc-system-title">
-              <strong>District Operations Center</strong>
-              <span className="eoc-badge-level eoc-badge-critical">
-                {stats.discharge >= 8000 ? "ABOVE DANGER MARK" : stats.discharge >= 4500 ? "ELEVATED" : "NORMAL"}
+              <strong>{selectedIncident?.title || "Emergency Operations Center"}</strong>
+              <span className={`eoc-badge-level ${stats.highestForecast?.level === "red" ? "eoc-badge-critical" : stats.highestForecast?.level === "orange" ? "eoc-badge-warning" : "eoc-badge-normal"}`}>
+                {selectedIncident
+                  ? selectedIncident.status.toUpperCase()
+                  : stats.highestForecast
+                  ? `${stats.highestForecast.level?.toUpperCase() || "MONITORED"} RISK`
+                  : dashboardLoading
+                    ? "LOADING LIVE DATA"
+                    : "AWAITING PROVIDER"}
               </span>
             </div>
             <p className="eoc-jurisdiction">
-              LOWER KOSI BASIN <span aria-hidden="true">·</span> Supaul, Saharsa, Madhepura & Purnia
+              {selectedIncident
+                ? `${selectedIncident.hazard_type} · ${selectedIncident.area_name}`
+                : "Incident-linked records are not selected"}
             </p>
           </div>
         </div>
 
         <div className="eoc-bar-controls">
           <div className="eoc-control-group">
-            <label className="eoc-label-small">DISTRICT SECTOR</label>
+            <label className="eoc-label-small" htmlFor="eoc-incident-select">ACTIVE INCIDENT</label>
             <select
-              value={selectedDistrict}
-              onChange={(e) => setSelectedDistrict(e.target.value)}
+              id="eoc-incident-select"
+              value={selectedIncidentId}
+              disabled={!incidents.some((incident) => incident.status !== "closed")}
               className="eoc-select"
+              onChange={(event) => {
+                setSelectedIncidentId(event.target.value);
+                loadDashboard(false, event.target.value);
+              }}
             >
-              <option value="all">All Sectors (4 Districts)</option>
-              <option value="Supaul">Supaul (Upstream Embankment)</option>
-              <option value="Saharsa">Saharsa (Mid-Basin Diara)</option>
-              <option value="Madhepura">Madhepura (Southern Plains)</option>
-              <option value="Purnia">Purnia (Eastern Inflow)</option>
+              {incidents.filter((incident) => incident.status !== "closed").length === 0
+                ? <option value="">No active incidents</option>
+                : incidents.filter((incident) => incident.status !== "closed").map((incident) => (
+                  <option key={incident.id} value={String(incident.id)}>
+                    {incident.title} · {incident.hazard_type} · {incident.area_name}
+                  </option>
+                ))}
             </select>
           </div>
+          {canManageIncidents && (
+            <button
+              type="button"
+              className="button button-outline eoc-refresh-button"
+              onClick={() => setIncidentFormOpen((open) => !open)}
+            >
+              {incidentFormOpen ? "Cancel" : "Create incident"}
+            </button>
+          )}
+          <button
+            type="button"
+            className="button button-outline eoc-refresh-button"
+            onClick={() => loadDashboard(true)}
+            disabled={dashboardLoading}
+          >
+            {dashboardLoading ? "Refreshing…" : "Refresh data"}
+          </button>
+          <button
+            type="button"
+            className="button button-outline eoc-refresh-button"
+            onClick={() => window.print()}
+          >
+            Print brief
+          </button>
         </div>
       </header>
 
+      {incidentFormOpen && canManageIncidents && (
+        <form className="eoc-incident-form" onSubmit={submitIncident}>
+          <label>
+            Incident title
+            <input
+              required
+              maxLength={160}
+              value={incidentForm.title}
+              onChange={(event) => setIncidentForm({ ...incidentForm, title: event.target.value })}
+            />
+          </label>
+          <label>
+            Hazard
+            <input
+              required
+              maxLength={40}
+              value={incidentForm.hazard_type}
+              onChange={(event) => setIncidentForm({ ...incidentForm, hazard_type: event.target.value })}
+            />
+          </label>
+          <label>
+            Affected area
+            <input
+              required
+              maxLength={200}
+              value={incidentForm.area_name}
+              onChange={(event) => setIncidentForm({ ...incidentForm, area_name: event.target.value })}
+            />
+          </label>
+          <label>
+            Operator notes
+            <input
+              maxLength={4000}
+              value={incidentForm.description}
+              onChange={(event) => setIncidentForm({ ...incidentForm, description: event.target.value })}
+            />
+          </label>
+          <button type="submit" className="button button-primary">Open incident</button>
+          {incidentFormError && <p role="alert">{incidentFormError}</p>}
+        </form>
+      )}
+
+      {(dashboardLoading || dashboardError || backendStatus) && (
+        <div className={`eoc-data-banner ${dashboardError ? "eoc-data-error" : ""}`}>
+          <span className="eoc-data-dot" />
+          <span>
+            {dashboardLoading
+              ? "Loading provider snapshot and database records…"
+              : dashboardError
+                ? dashboardError
+                : forecastAvailable
+                  ? `Provider snapshot available · ${stats.liveForecastCount} provider risk indicators`
+                  : "Provider snapshot unavailable · official warning feed is not connected"}
+          </span>
+          <small>
+            Dashboard fetched {dashboardFetchedAt ? new Date(dashboardFetchedAt).toLocaleString() : "not yet"}
+            {selectedIncidentId
+              ? ` · Incident operations refresh every 15 seconds${liveOperationsFetchedAt ? ` · Last incident sync ${new Date(liveOperationsFetchedAt).toLocaleTimeString()}` : ""}`
+              : ""}
+            {backendStatus?.telemetry?.last_update
+              ? ` · Provider update ${new Date(backendStatus.telemetry.last_update).toLocaleString()}`
+              : " · Provider update time unavailable"}
+          </small>
+        </div>
+      )}
+      {operationError && <p className="eoc-action-error" role="alert">{operationError}</p>}
+      {recordActionError && <p className="eoc-action-error" role="alert">{recordActionError}</p>}
+      {selectedIncidentId && canManageIncidents && (
+        <div className="eoc-incident-lifecycle">
+          <span>
+            Incident status: <strong>
+              {incidents.find((incident) => String(incident.id) === selectedIncidentId)?.status}
+            </strong>
+          </span>
+          <select
+            aria-label="Update incident status"
+            className="eoc-select"
+            value={incidents.find((incident) => String(incident.id) === selectedIncidentId)?.status || "active"}
+            onChange={(event) => changeIncidentStatus(event.target.value)}
+          >
+            <option value="active">Active</option>
+            <option value="monitoring">Monitoring</option>
+            <option value="closed">Closed</option>
+          </select>
+        </div>
+      )}
+
+      <section className="eoc-print-brief" aria-hidden="true">
+        <h1>AapdaSetu · EOC data brief</h1>
+        <p>Generated {new Date().toLocaleString()} · {selectedIncident ? `${selectedIncident.title} · ${selectedIncident.hazard_type}` : "Unassigned operational records"}</p>
+        <p>Verified area boundaries, responder inventory, and rescue routing are not connected.</p>
+        <dl>
+          <dt>Highest provider risk score</dt>
+          <dd>{stats.highestForecast ? `${stats.highestForecast.score} · ${stats.highestForecast.region}` : "Unavailable"}</dd>
+          <dt>Open SOS database records</dt>
+          <dd>{stats.pendingSos}</dd>
+          <dt>Shelter records</dt>
+          <dd>{sheltersList.length} · Occupancy {stats.totalOccupied === null
+            ? stats.occupancyKnownCount ? "incomplete" : "not reported"
+            : `${stats.totalOccupied}/${stats.totalCapacity || "capacity unknown"}`}</dd>
+          <dt>Provider snapshot last update</dt>
+          <dd>{backendStatus?.telemetry?.last_update ? new Date(backendStatus.telemetry.last_update).toLocaleString() : "Not reported"}</dd>
+        </dl>
+        <p>Provider indicators and catalogue records are not official warnings or confirmation of current conditions. AapdaSetu is not an emergency service.</p>
+      </section>
+
+      <section className="eoc-attention-panel" aria-labelledby="eoc-attention-title">
+        <div className="eoc-attention-heading">
+          <div>
+            <span className="section-kicker">REVIEW QUEUE</span>
+            <h2 id="eoc-attention-title">Attention to review</h2>
+          </div>
+          <span>{selectedIncident
+            ? "Selected-incident records · citizen/operator submitted, not externally verified"
+            : "Unassigned database records · not a verified live incident queue"}</span>
+        </div>
+        <div className="eoc-attention-items">
+          {stats.criticalSos.map((sos) => (
+            <button
+              type="button"
+              className="eoc-attention-item eoc-attention-critical"
+              key={sos.id}
+              onClick={() => openFeature("sos", sos)}
+            >
+              <strong>Critical SOS record · {sos.id}</strong>
+              <span>{sos.village} · {sos.need} · Open record</span>
+            </button>
+          ))}
+          {stats.highOccupancyShelters.map((shelter) => (
+            <button
+              type="button"
+              className="eoc-attention-item eoc-attention-warning"
+              key={shelter.id}
+              onClick={() => openFeature("shelter", shelter)}
+            >
+              <strong>Shelter occupancy record at or above 85%</strong>
+              <span>{shelter.name} · Recorded {shelter.occupied}/{shelter.capacity} · Review freshness</span>
+            </button>
+          ))}
+          {stats.criticalSos.length === 0 && stats.highOccupancyShelters.length === 0 && (
+            <div className="eoc-attention-empty">
+              No critical SOS or high recorded-occupancy records are available to review.
+            </div>
+          )}
+          {(!backendStatus?.telemetry?.last_update || !sheltersList.length) && (
+            <div className="eoc-attention-item eoc-attention-info">
+              <strong>Data readiness needs review</strong>
+              <span>
+                {!backendStatus?.telemetry?.last_update && "No provider update timestamp is available. "}
+                {!sheltersList.length && "No shelter records are available."}
+              </span>
+            </div>
+          )}
+        </div>
+      </section>
+
+      <section className="panel eoc-coordination-panel" aria-label="Cross-area supply coordination">
+        <div className="eoc-coordination-heading">
+          <div>
+            <span className="section-kicker">CROSS-AREA SUPPLY COORDINATION</span>
+            <h2>Help requests, offers, and fulfillment</h2>
+            <p>These coordination records are not yet associated with a selected incident.</p>
+          </div>
+          <button
+            type="button"
+            className="button button-outline"
+            onClick={() => getCoordinationSummary().then(setCoordinationSummary).catch((error) => setCoordinationError(error.message))}
+          >
+            Refresh
+          </button>
+        </div>
+        {coordinationLoading && !coordinationSummary ? (
+          <p className="coordination-muted">Loading coordination records…</p>
+        ) : coordinationError ? (
+          <p className="coordination-error" role="alert">{coordinationError}</p>
+        ) : coordinationSummary ? (
+          <>
+            <div className="eoc-coordination-metrics">
+              <article><span>Help requests</span><strong>{coordinationSummary.metrics.help_requests}</strong></article>
+              <article><span>Open / partial</span><strong>{coordinationSummary.metrics.open_help_requests + coordinationSummary.metrics.partially_fulfilled_requests}</strong></article>
+              <article><span>Supply offers</span><strong>{coordinationSummary.metrics.supply_offers}</strong></article>
+              <article><span>Units fulfilled</span><strong>{coordinationSummary.metrics.units_fulfilled} / {coordinationSummary.metrics.units_requested}</strong></article>
+              <article><span>Awaiting responders</span><strong>{coordinationSummary.metrics.pending_responder}</strong></article>
+              <article><span>Responder assignments</span><strong>{coordinationSummary.metrics.responder_assignments}</strong></article>
+              <article><span>Delivered</span><strong>{coordinationSummary.metrics.delivered}</strong></article>
+            </div>
+            <div className="eoc-coordination-records">
+              <div>
+                <h3>Recent help requests</h3>
+                {coordinationSummary.help_requests.slice(0, 5).map((request) => (
+                  <article className="eoc-coordination-record" key={request.id}>
+                    <strong>{request.items.map((item) => `${item.item_name}: ${item.units_fulfilled}/${item.units_required} ${item.unit_label}`).join(" · ")}</strong>
+                    <span>{request.locality}, {request.district}, {request.state} · {request.status}</span>
+                        {request.moderation_reason && (
+                          <span>Flagged: {request.moderation_reason}</span>
+                        )}
+                        {canModerate && request.status !== "closed" && (
+                          <div className="eoc-request-moderation">
+                            <button type="button" className="button button-outline" onClick={() => moderateRequest(request, "flag", "spam")}>Flag spam</button>
+                            <button type="button" className="button button-outline" onClick={() => moderateRequest(request, "flag", "duplicate")}>Flag duplicate</button>
+                            <button type="button" className="button button-outline" onClick={() => moderateRequest(request, "close", "spam")}>Close as spam</button>
+                            <button type="button" className="button button-outline" onClick={() => moderateRequest(request, "close", "duplicate")}>Close as duplicate</button>
+                          </div>
+                        )}
+                      </article>
+                ))}
+                {coordinationSummary.help_requests.length === 0 && <p className="coordination-muted">No help requests recorded.</p>}
+              </div>
+              <div>
+                <h3>Recent supply offers</h3>
+                {coordinationSummary.supply_offers.slice(0, 5).map((offer) => (
+                  <article className="eoc-coordination-record" key={offer.id}>
+                    <strong>{offer.item_name} · {offer.units_offered} {offer.unit_label}</strong>
+                    <span>{offer.pickup_location} → {offer.drop_location} · {offer.status.replaceAll("_", " ")}</span>
+                  </article>
+                ))}
+                {coordinationSummary.supply_offers.length === 0 && <p className="coordination-muted">No supply offers recorded.</p>}
+              </div>
+            </div>
+          </>
+        ) : null}
+      </section>
+
       {/* 2. SITUATION SUMMARY */}
       <section className="eoc-kpi-grid">
-        <div className={`eoc-kpi-card ${stats.discharge >= 8000 ? "kpi-danger" : stats.discharge >= 4500 ? "kpi-warning" : "kpi-normal"}`}>
+        <button
+          type="button"
+          className={`eoc-kpi-card eoc-kpi-action ${stats.highestForecast?.level === "red" ? "kpi-danger" : stats.highestForecast?.level === "orange" ? "kpi-warning" : "kpi-normal"}`}
+          onClick={() => setActiveTab("hydro")}
+        >
           <div className="kpi-top">
             <span className="kpi-icon">🌊</span>
-            <span className="kpi-tag">{stats.discharge >= 8000 ? "ABOVE DANGER" : "MONITORED"}</span>
+            <span className="kpi-tag">
+              {stats.highestForecast
+                ? selectedIncident
+                  ? "FLOOD SNAPSHOT · NOT LINKED"
+                  : `${stats.highestForecast.level?.toUpperCase()} PROVIDER RISK`
+                : "NO SNAPSHOT"}
+            </span>
           </div>
-          <div className="kpi-value">{stats.discharge.toLocaleString()} <span className="kpi-unit">m³/s</span></div>
-          <div className="kpi-title">Birpur Barrage Discharge</div>
+          <div className="kpi-value">{stats.highestForecast ? `${stats.highestForecast.score}` : "—"}</div>
+          <div className="kpi-title">
+            {selectedIncident ? "Unlinked flood provider indicator" : "Highest provider flood risk score"}
+          </div>
           <div className="kpi-sub">
-            CWC Danger Mark: 8,000 m³/s (<strong>{stats.dischargeDiff > 0 ? `+${stats.dischargeDiff} m³/s` : "Normal"}</strong>)
+            {stats.highestForecast
+              ? `${stats.highestForecast.region} · open-provider indicator${selectedIncident ? " · outside this incident" : ""}`
+              : "No initialized provider snapshot"}
           </div>
-        </div>
+          <span className="kpi-drilldown">View provider snapshot →</span>
+        </button>
 
         <div className="eoc-kpi-card kpi-neutral">
           <div className="kpi-top">
             <span className="kpi-icon">👥</span>
-            <span className="kpi-tag">AT-RISK POPULATION</span>
+            <span className="kpi-tag">{stats.peopleAffected === null ? "NO COUNTS REPORTED" : "REPORTED TOTAL"}</span>
           </div>
-          <div className="kpi-value">{stats.exposedPeople.toLocaleString()}</div>
-          <div className="kpi-title">Population at risk</div>
-          <div className="kpi-sub">Estimate across 42 low-lying panchayats</div>
+          <div className="kpi-value">{stats.peopleAffected?.toLocaleString() ?? "—"}</div>
+          <div className="kpi-title">People reported in SOS records</div>
+          <div className="kpi-sub">
+            {stats.peopleAffected === null
+              ? "No SOS record includes a people count"
+              : `Sum of reported counts; ${stats.sosRecordsWithoutPeopleCount} record(s) have no count and totals may overlap`}
+          </div>
         </div>
 
-        <div className="eoc-kpi-card kpi-shelter">
+        <button
+          type="button"
+          className="eoc-kpi-card eoc-kpi-action kpi-shelter"
+          onClick={() => setActiveTab("shelters")}
+        >
           <div className="kpi-top">
             <span className="kpi-icon">🏠</span>
-            <span className="kpi-tag">{stats.occupancyPct}% OCCUPIED</span>
+            <span className="kpi-tag">{stats.occupancyPct === null ? "NO OCCUPANCY DATA" : `${stats.occupancyPct}% RECORDED`}</span>
           </div>
-          <div className="kpi-value">{stats.totalOccupied.toLocaleString()} <span className="kpi-unit">/ {stats.totalCapacity.toLocaleString()}</span></div>
-          <div className="kpi-title">14 Designated Shelters</div>
+          <div className="kpi-value">
+            {stats.totalCapacity
+              ? <>{stats.totalOccupied === null ? "—" : stats.totalOccupied.toLocaleString()} <span className="kpi-unit">/ {stats.totalCapacity.toLocaleString()}</span></>
+              : "—"}
+          </div>
+          <div className="kpi-title">{stats.totalCapacity ? `${sheltersList.length} shelter records` : "Shelter occupancy"}</div>
           <div className="kpi-sub">
-            {stats.totalCapacity - stats.totalOccupied} available bed capacity remaining
+            {stats.totalCapacity
+              ? stats.totalOccupied === null
+                ? stats.occupancyKnownCount
+                  ? `Incomplete occupancy · ${stats.occupancyKnownCount} report(s) available`
+                  : "No current occupancy has been reported"
+                : `${stats.totalCapacity - stats.totalOccupied} remaining recorded capacity · freshness shown per shelter`
+              : "No shelter records returned by the database"}
           </div>
-        </div>
+          <span className="kpi-drilldown">Review shelter records →</span>
+        </button>
 
-        <div className="eoc-kpi-card kpi-sos">
+        <button
+          type="button"
+          className="eoc-kpi-card eoc-kpi-action kpi-sos"
+          onClick={() => setActiveTab("triage")}
+        >
           <div className="kpi-top">
             <span className="kpi-icon">🆘</span>
-            <span className="kpi-tag">{stats.pendingSos} PENDING ACTION</span>
+            <span className="kpi-tag">{stats.pendingSos} OPEN RECORDS</span>
           </div>
-          <div className="kpi-value">{stats.pendingSos} <span className="kpi-unit">Active</span></div>
-          <div className="kpi-title">Citizen Distress SOS Queue</div>
+          <div className="kpi-value">{stats.pendingSos} <span className="kpi-unit">records</span></div>
+          <div className="kpi-title">Open SOS records</div>
           <div className="kpi-sub">
-            {stats.dispatchedSos} {stats.dispatchedSos === 1 ? "rescue team" : "rescue teams"} currently en route
+            {selectedIncident ? "SOS records linked to selected incident" : "Persisted records · incident association unavailable"}
           </div>
-        </div>
+          <span className="kpi-drilldown">Review SOS records →</span>
+        </button>
 
         <div className="eoc-kpi-card kpi-responder">
           <div className="kpi-top">
             <span className="kpi-icon">🚤</span>
-            <span className="kpi-tag">READY</span>
+            <span className="kpi-tag">NOT CONNECTED</span>
           </div>
-          <div className="kpi-value">{stats.activeResponders} <span className="kpi-unit">Units</span></div>
-          <div className="kpi-title">Available response assets</div>
-          <div className="kpi-sub">NDRF / SDRF units listed in this area</div>
+          <div className="kpi-value">—</div>
+          <div className="kpi-title">Responder availability</div>
+          <div className="kpi-sub">No live responder inventory is connected</div>
         </div>
       </section>
 
@@ -485,19 +971,25 @@ export default function EOCDashboard({ language = "en" }) {
           className={`eoc-tab-btn ${activeTab === "triage" ? "active" : ""}`}
           onClick={() => setActiveTab("triage")}
         >
-          Priority SOS Queue ({stats.pendingSos})
+          SOS Records ({stats.pendingSos})
         </button>
         <button
           className={`eoc-tab-btn ${activeTab === "hydro" ? "active" : ""}`}
           onClick={() => setActiveTab("hydro")}
         >
-          72-hour Hydrograph & Forecast
+          Provider Snapshot
         </button>
         <button
           className={`eoc-tab-btn ${activeTab === "shelters" ? "active" : ""}`}
           onClick={() => setActiveTab("shelters")}
         >
-          Shelter Capacity ({sheltersList.length})
+          Shelter Records ({sheltersList.length})
+        </button>
+        <button
+          className={`eoc-tab-btn ${activeTab === "catalog" ? "active" : ""}`}
+          onClick={() => setActiveTab("catalog")}
+        >
+          Database Catalog
         </button>
         <button
           className={`eoc-tab-btn ${activeTab === "broadcast" ? "active" : ""}`}
@@ -512,22 +1004,14 @@ export default function EOCDashboard({ language = "en" }) {
         <div className="eoc-map-view">
           <div className="eoc-map-toolbar">
             <div className="eoc-map-layers">
-              <span className="toolbar-label">GIS LAYERS:</span>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={layerFilters.inundation}
-                  onChange={(e) => setLayerFilters({ ...layerFilters, inundation: e.target.checked })}
-                />
-                🌊 Flood Inundation Buffer
-              </label>
+              <span className="toolbar-label">RECORD LAYERS:</span>
               <label>
                 <input
                   type="checkbox"
                   checked={layerFilters.shelters}
                   onChange={(e) => setLayerFilters({ ...layerFilters, shelters: e.target.checked })}
                 />
-                🏠 Safe Shelters (14)
+                Shelters ({filteredShelters.length})
               </label>
               <label>
                 <input
@@ -535,7 +1019,7 @@ export default function EOCDashboard({ language = "en" }) {
                   checked={layerFilters.stations}
                   onChange={(e) => setLayerFilters({ ...layerFilters, stations: e.target.checked })}
                 />
-                📍 Gauge Telemetry (4)
+                Provider points ({filteredGauges.length})
               </label>
               <label>
                 <input
@@ -543,30 +1027,10 @@ export default function EOCDashboard({ language = "en" }) {
                   checked={layerFilters.sos}
                   onChange={(e) => setLayerFilters({ ...layerFilters, sos: e.target.checked })}
                 />
-                🚨 Distress SOS Beacons
-              </label>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={layerFilters.corridors}
-                  onChange={(e) => setLayerFilters({ ...layerFilters, corridors: e.target.checked })}
-                />
-                🛣️ Safe Evacuation Corridors
+                SOS records ({filteredSos.length})
               </label>
             </div>
-
-            <div className="eoc-inundation-slider">
-              <span className="toolbar-label">WATER DISCHARGE SEVERITY:</span>
-              <input
-                type="range"
-                min="20"
-                max="100"
-                value={inundationLevel}
-                onChange={(e) => setInundationLevel(Number(e.target.value))}
-                className="slider-input"
-              />
-              <span className="slider-val">{inundationLevel}%</span>
-            </div>
+            <span className="eoc-map-unavailable">No incident boundary or rescue-route feed connected</span>
           </div>
 
           <div className="eoc-map-stage">
@@ -574,22 +1038,9 @@ export default function EOCDashboard({ language = "en" }) {
               className="eoc-gis-svg"
               viewBox="0 0 900 600"
               preserveAspectRatio="xMidYMid meet"
-              aria-label="Lower Kosi GIS Map"
+              aria-label="Schematic record map; not a navigation map"
             >
               <defs>
-                {/* River water gradient */}
-                <linearGradient id="kosiGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="#1e90ff" stopOpacity="0.9" />
-                  <stop offset="50%" stopColor="#0077be" stopOpacity="0.8" />
-                  <stop offset="100%" stopColor="#0a4b78" stopOpacity="0.9" />
-                </linearGradient>
-
-                {/* Inundation zone pattern */}
-                <pattern id="floodHatch" width="8" height="8" patternTransform="rotate(45 0 0)" patternUnits="userSpaceOnUse">
-                  <line x1="0" y1="0" x2="0" y2="8" stroke="#ff3838" strokeWidth="2.5" strokeOpacity="0.25" />
-                </pattern>
-
-                {/* Radar pulse for SOS */}
                 <radialGradient id="sosGlow" cx="50%" cy="50%" r="50%">
                   <stop offset="0%" stopColor="#ff0000" stopOpacity="0.8" />
                   <stop offset="100%" stopColor="#ff0000" stopOpacity="0" />
@@ -599,212 +1050,86 @@ export default function EOCDashboard({ language = "en" }) {
               {/* Map Canvas Background */}
               <rect width="900" height="600" fill="#10252c" rx="8" />
 
-              {/* 1. DISTRICT BOUNDARIES */}
-              {/* Supaul (NW) */}
-              <g className="district-group">
-                <path
-                  d="M 120 70 L 450 70 L 450 280 L 120 280 Z"
-                  fill="#14323b"
-                  stroke="#285664"
-                  strokeWidth="1.5"
-                  strokeDasharray="4 4"
-                />
-                <text x="140" y="100" fill="#76a8b7" fontSize="13" fontWeight="bold" letterSpacing="1">
-                  SUPAUL DISTRICT (UPSTREAM KOSI)
-                </text>
-              </g>
+              <text x="22" y="30" fill="#9abac1" fontSize="12">
+                Coordinate plot · schematic canvas · not for navigation
+              </text>
 
-              {/* Saharsa (SW) */}
-              <g className="district-group">
-                <path
-                  d="M 65 280 L 360 280 L 360 480 L 65 480 Z"
-                  fill="#122d36"
-                  stroke="#285664"
-                  strokeWidth="1.5"
-                  strokeDasharray="4 4"
-                />
-                <text x="85" y="310" fill="#76a8b7" fontSize="13" fontWeight="bold" letterSpacing="1">
-                  SAHARSA DISTRICT (DIARA EMBANKMENT)
-                </text>
-              </g>
-
-              {/* Madhepura (Center-South) */}
-              <g className="district-group">
-                <path
-                  d="M 360 280 L 580 280 L 580 540 L 360 540 Z"
-                  fill="#153640"
-                  stroke="#285664"
-                  strokeWidth="1.5"
-                  strokeDasharray="4 4"
-                />
-                <text x="380" y="310" fill="#76a8b7" fontSize="13" fontWeight="bold" letterSpacing="1">
-                  MADHEPURA DISTRICT
-                </text>
-              </g>
-
-              {/* Purnia (East) */}
-              <g className="district-group">
-                <path
-                  d="M 580 180 L 880 180 L 880 540 L 580 540 Z"
-                  fill="#112932"
-                  stroke="#285664"
-                  strokeWidth="1.5"
-                  strokeDasharray="4 4"
-                />
-                <text x="600" y="210" fill="#76a8b7" fontSize="13" fontWeight="bold" letterSpacing="1">
-                  PURNIA DISTRICT (EASTERN SECTOR)
-                </text>
-              </g>
-
-              {/* 2. DYNAMIC FLOOD INUNDATION POLYGON */}
-              {layerFilters.inundation && (
-                <g className="inundation-layer">
-                  {/* Outer danger buffer scaled by slider */}
-                  <path
-                    d={`M 365 110 
-                       Q ${300 - inundationLevel * 0.4} 190, ${220 - inundationLevel * 0.5} 270 
-                       Q ${170 - inundationLevel * 0.4} 340, ${210 - inundationLevel * 0.3} 420 
-                       Q ${320 + inundationLevel * 0.3} 470, ${520 + inundationLevel * 0.3} 540
-                       L ${550 - inundationLevel * 0.2} 550
-                       Q ${370 - inundationLevel * 0.2} 490, ${280 - inundationLevel * 0.2} 430
-                       Q ${260 + inundationLevel * 0.5} 350, ${320 + inundationLevel * 0.4} 260
-                       Q ${430 + inundationLevel * 0.3} 180, 375 110 Z`}
-                    fill="url(#floodHatch)"
-                    stroke="#ff4d4d"
-                    strokeWidth="1.8"
-                    strokeOpacity="0.8"
-                  />
-                  <path
-                    d={`M 365 110 
-                       Q 300 190, 220 270 
-                       Q 170 340, 210 420 
-                       Q 320 470, 520 540
-                       L 535 540
-                       Q 335 470, 230 420
-                       Q 190 340, 240 270
-                       Q 320 190, 375 110 Z`}
-                    fill="#ff2222"
-                    fillOpacity={0.15 + (inundationLevel / 100) * 0.25}
-                  />
-                  <text x="250" y="380" fill="#ff6b6b" fontSize="11" fontWeight="bold">
-                    ⚠️ ACTIVE FLOOD ZONE ({stats.discharge} m³/s)
-                  </text>
-                </g>
-              )}
-
-              {/* 3. KOSI RIVER COURSE */}
-              <g className="kosi-river-main">
-                <path
-                  id="kosiMainPath"
-                  d="M 370 115 
-                     Q 320 195, 230 270 
-                     Q 180 340, 220 425 
-                     Q 300 480, 525 540"
-                  fill="none"
-                  stroke="url(#kosiGradient)"
-                  strokeWidth={14 + (inundationLevel / 100) * 12}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-                {/* River water flow pulse effect */}
-                <path
-                  d="M 370 115 
-                     Q 320 195, 230 270 
-                     Q 180 340, 220 425 
-                     Q 300 480, 525 540"
-                  fill="none"
-                  stroke="#a8e6ff"
-                  strokeWidth="3"
-                  strokeDasharray="12 16"
-                  strokeDashoffset="10"
-                  className="river-pulse"
-                />
-                <text x="390" y="145" fill="#69c0ff" fontSize="12" fontWeight="bold">
-                  Kosi River ➔
-                </text>
-                <text x="440" y="525" fill="#69c0ff" fontSize="11">
-                  Towards Kursela Confluence ➔
-                </text>
-              </g>
-
-              {/* 4. SAFE EVACUATION CORRIDORS */}
-              {layerFilters.corridors && (
-                <g className="evacuation-corridors">
-                  {/* Route 1: Nirmali to Birpur Model School */}
-                  <line x1="202" y1="270" x2="367" y2="119" stroke="#52c41a" strokeWidth="2.5" strokeDasharray="6 4" />
-                  {/* Route 2: Pipra to Supaul Zila School */}
-                  <line x1="262" y1="250" x2="202" y2="271" stroke="#52c41a" strokeWidth="2.5" strokeDasharray="6 4" />
-                  {/* Route 3: Mahishi to Saharsa Stadium */}
-                  <line x1="120" y1="380" x2="199" y2="364" stroke="#52c41a" strokeWidth="2.5" strokeDasharray="6 4" />
-                  {/* Route 4: Alamnagar to Madhepura Town Hall */}
-                  <line x1="350" y1="480" x2="295" y2="349" stroke="#52c41a" strokeWidth="2.5" strokeDasharray="6 4" />
-                </g>
-              )}
-
-              {/* 5. GAUGE STATIONS */}
               {layerFilters.stations &&
                 filteredGauges.map((g) => {
                   const { x, y } = project(g.lon, g.lat);
-                  const isDanger = g.status === "danger";
                   return (
                     <g
                       key={g.id}
-                      className="gauge-node"
+                      className={`gauge-node ${selectedFeature?.data.id === g.id ? "map-feature-selected" : ""}`}
                       transform={`translate(${x}, ${y})`}
-                      onClick={() => setSelectedFeature({ type: "station", data: g })}
+                      onClick={() => openFeature("station", g)}
+                      onKeyDown={(event) => handleMapMarkerKey(event, "station", g)}
                       style={{ cursor: "pointer" }}
+                      role="button"
+                      tabIndex="0"
+                      aria-label={`Open provider point ${g.name}`}
                     >
-                      <circle r="12" fill={isDanger ? "#cf1322" : "#faad14"} fillOpacity="0.3" className="node-halo" />
-                      <circle r="7" fill={isDanger ? "#f5222d" : "#ffc53d"} stroke="#fff" strokeWidth="2" />
+                      <circle r="10" fill="#256b86" fillOpacity="0.5" className="node-halo" />
+                      <circle r="6" fill="#48b5cc" stroke="#fff" strokeWidth="2" />
                       <text x="12" y="4" fill="#ffffff" fontSize="11" fontWeight="bold">
                         {g.name}
                       </text>
-                      <text x="12" y="16" fill={isDanger ? "#ff7875" : "#ffe58f"} fontSize="10">
-                        {g.type === "discharge" ? `${g.discharge} m³/s (🔴 DANGER)` : `${g.waterLevel}m (Stage)`}
+                      <text x="12" y="16" fill="#a8e6ff" fontSize="10">
+                        Provider score: {g.score ?? "—"} · {g.status.toUpperCase()}
                       </text>
                     </g>
                   );
                 })}
 
-              {/* 6. EMERGENCY SHELTERS */}
               {layerFilters.shelters &&
-                filteredShelters.map((s) => {
+                filteredShelters.filter((item) => Number.isFinite(item.lon) && Number.isFinite(item.lat)).map((s) => {
                   const { x, y } = project(s.lon, s.lat);
-                  const occRatio = s.occupied / s.capacity;
-                  const markerColor = occRatio >= 0.85 ? "#ff4d4f" : occRatio >= 0.65 ? "#faad14" : "#52c41a";
+                  const occRatio = s.capacity && s.occupied !== null
+                    ? s.occupied / s.capacity
+                    : null;
+                  const markerColor = s.capacity
+                    ? occRatio === null ? "#66868a" : occRatio >= 0.85 ? "#cf6259" : occRatio >= 0.65 ? "#c39a45" : "#398b72"
+                    : "#66868a";
 
                   return (
                     <g
                       key={s.id}
-                      className="shelter-node"
+                      className={`shelter-node ${selectedFeature?.data.id === s.id ? "map-feature-selected" : ""}`}
                       transform={`translate(${x}, ${y})`}
-                      onClick={() => setSelectedFeature({ type: "shelter", data: s })}
+                      onClick={() => openFeature("shelter", s)}
+                      onKeyDown={(event) => handleMapMarkerKey(event, "shelter", s)}
                       style={{ cursor: "pointer" }}
+                      role="button"
+                      tabIndex="0"
+                      aria-label={`Open shelter record ${s.name}`}
                     >
                       <rect x="-8" y="-8" width="16" height="16" rx="3" fill={markerColor} stroke="#fff" strokeWidth="1.5" />
                       <text x="0" y="3" textAnchor="middle" fill="#fff" fontSize="9" fontWeight="bold">
                         H
                       </text>
                       <text x="10" y="-2" fill="#d9f7be" fontSize="10" fontWeight="500">
-                        {s.name.split(" ")[0]} ({s.occupied}/{s.capacity})
+                        {s.name}
                       </text>
                     </g>
                   );
                 })}
 
-              {/* 7. ACTIVE SOS BEACONS */}
               {layerFilters.sos &&
-                filteredSos.map((sos) => {
+                filteredSos.filter((item) => Number.isFinite(item.lon) && Number.isFinite(item.lat)).map((sos) => {
                   const { x, y } = project(sos.lon, sos.lat);
                   const isCritical = sos.severity === "critical";
 
                   return (
                     <g
                       key={sos.id}
-                      className="sos-beacon-node"
+                      className={`sos-beacon-node ${selectedFeature?.data.id === sos.id ? "map-feature-selected" : ""}`}
                       transform={`translate(${x}, ${y})`}
-                      onClick={() => setSelectedFeature({ type: "sos", data: sos })}
+                      onClick={() => openFeature("sos", sos)}
+                      onKeyDown={(event) => handleMapMarkerKey(event, "sos", sos)}
                       style={{ cursor: "pointer" }}
+                      role="button"
+                      tabIndex="0"
+                      aria-label={`Open SOS record ${sos.id}`}
                     >
                       <circle r="18" fill="url(#sosGlow)" className="sos-pulse" />
                       <circle r="8" fill={isCritical ? "#f5222d" : "#fa8c16"} stroke="#fff" strokeWidth="2" />
@@ -821,12 +1146,10 @@ export default function EOCDashboard({ language = "en" }) {
 
             {/* MAP LEGEND */}
             <div className="eoc-map-legend">
-              <span className="legend-title">MAP SYMBOLS:</span>
-              <span><span className="leg-dot leg-danger" /> Gauge at Danger</span>
-              <span><span className="leg-dot leg-shelter-good" /> Shelter &lt;65%</span>
-              <span><span className="leg-dot leg-shelter-full" /> Shelter &gt;85%</span>
-              <span><span className="leg-dot leg-sos" /> Active Distress SOS</span>
-              <span><span className="leg-line leg-corridor" /> Safe Corridor</span>
+              <span className="legend-title">DISPLAYED RECORDS:</span>
+              {!selectedIncidentId && <span><span className="leg-dot leg-danger" /> Provider risk point</span>}
+              <span><span className="leg-dot leg-shelter-good" /> {selectedIncidentId ? "Incident shelter" : "Shelter catalogue record"}</span>
+              <span><span className="leg-dot leg-sos" /> {selectedIncidentId ? "Incident SOS record" : "Persisted SOS record"}</span>
             </div>
           </div>
 
@@ -845,34 +1168,39 @@ export default function EOCDashboard({ language = "en" }) {
               {selectedFeature.type === "shelter" && (
                 <div className="inspect-body">
                   <h3>{selectedFeature.data.name}</h3>
-                  <p>District: <strong>{selectedFeature.data.district}</strong> · Emergency Contact: <code>{selectedFeature.data.contact}</code></p>
+                  <p>Area: <strong>{selectedFeature.data.district}</strong> · Source: <strong>{selectedFeature.data.sourceName || "Not recorded"}</strong></p>
                   <div className="inspect-stat-row">
-                    <div>Capacity: <strong>{selectedFeature.data.capacity} beds</strong></div>
-                    <div>Occupancy: <strong>{selectedFeature.data.occupied} ({Math.round((selectedFeature.data.occupied / selectedFeature.data.capacity) * 100)}%)</strong></div>
-                    <div>Food Rations: <strong>{selectedFeature.data.foodDays} days buffer</strong></div>
-                    <div>Medical Officers: <strong>{selectedFeature.data.medicalStaff} on duty</strong></div>
+                    <div>Recorded capacity: <strong>{selectedFeature.data.capacity || "Not reported"}</strong></div>
+                    <div>Occupancy: <strong>{selectedFeature.data.occupied !== null && selectedFeature.data.capacity ? `${selectedFeature.data.occupied} (${Math.round((selectedFeature.data.occupied / selectedFeature.data.capacity) * 100)}%)` : "Not reported"}</strong></div>
+                    <div>Verification: <strong>{selectedFeature.data.verificationStatus || "unverified"}</strong></div>
+                    <div>Freshness: <strong>Not provided by catalogue</strong></div>
                   </div>
-                  <div className="inspect-progress-track">
-                    <div
-                      className="inspect-progress-fill"
-                      style={{
-                        width: `${(selectedFeature.data.occupied / selectedFeature.data.capacity) * 100}%`,
-                        backgroundColor: (selectedFeature.data.occupied / selectedFeature.data.capacity) > 0.85 ? "#f5222d" : "#52c41a",
-                      }}
-                    />
-                  </div>
+                  {selectedFeature.data.capacity > 0 && selectedFeature.data.occupied !== null && (
+                    <div className="inspect-progress-track" aria-label="Recorded occupancy percentage">
+                      <div
+                        className="inspect-progress-fill"
+                        style={{
+                          width: `${Math.min(100, (selectedFeature.data.occupied / selectedFeature.data.capacity) * 100)}%`,
+                          backgroundColor: (selectedFeature.data.occupied / selectedFeature.data.capacity) > 0.85 ? "#f5222d" : "#52c41a",
+                        }}
+                      />
+                    </div>
+                  )}
+                  <button type="button" className="button button-outline" onClick={() => setActiveTab("shelters")}>
+                    View shelter records
+                  </button>
                 </div>
               )}
 
               {selectedFeature.type === "station" && (
                 <div className="inspect-body">
                   <h3>{selectedFeature.data.name}</h3>
-                  <p>Monitoring Authority: <strong>Central Water Commission (CWC) / Bihar WRD</strong></p>
+                  <p>Open-provider indicator. This is not an official observation, warning, or flood forecast.</p>
                   <div className="inspect-stat-row">
-                    <div>Current Flow: <strong className="text-danger">{selectedFeature.data.discharge || selectedFeature.data.waterLevel} {selectedFeature.data.type === "discharge" ? "m³/s" : "meters"}</strong></div>
-                    <div>Danger Threshold: <strong>{selectedFeature.data.dangerLevel}</strong></div>
-                    <div>Warning Threshold: <strong>{selectedFeature.data.warningLevel}</strong></div>
-                    <div>Trend: <strong>{selectedFeature.data.trend}</strong></div>
+                    <div>Risk score: <strong>{selectedFeature.data.score ?? "Not reported"}</strong></div>
+                    <div>Provider level: <strong>{selectedFeature.data.status}</strong></div>
+                    <div>Region: <strong>{selectedFeature.data.district}</strong></div>
+                    <div>Provider update: <strong>{backendStatus?.telemetry?.last_update ? new Date(backendStatus.telemetry.last_update).toLocaleString() : "Not reported"}</strong></div>
                   </div>
                 </div>
               )}
@@ -881,38 +1209,39 @@ export default function EOCDashboard({ language = "en" }) {
                 <div className="inspect-body">
                   <div className="inspect-tag-row">
                     <span className="badge-sos-id">{selectedFeature.data.id}</span>
-                    <span className="badge-severity-critical">{selectedFeature.data.severity.toUpperCase()}</span>
-                    <span>Triage Priority Score: <strong>{selectedFeature.data.score}/100</strong></span>
+                    <span className={`badge-severity-critical ${selectedFeature.data.severity}`}>{selectedFeature.data.severity || "priority not reported"}</span>
                   </div>
                   <h3>{selectedFeature.data.village} ({selectedFeature.data.district})</h3>
                   <p className="inspect-desc">{selectedFeature.data.details}</p>
-                  <p>Reported: <strong>{selectedFeature.data.time}</strong> · Victims affected: <strong>{selectedFeature.data.people} persons</strong></p>
-
-                  <div className="inspect-action-bar">
-                    {selectedFeature.data.status === "pending" ? (
-                      <>
+                  <p>Reported time: <strong>{selectedFeature.data.time || "Not provided"}</strong> · People affected: <strong>{selectedFeature.data.people ?? "Not provided"}</strong> · Status: <strong>{selectedFeature.data.status}</strong></p>
+                  {selectedIncidentId
+                    ? <p className="catalog-disclaimer">Linked to the selected incident. Status changes are operator-recorded and do not dispatch a responder.</p>
+                    : <p className="catalog-disclaimer">This SOS record is not confirmed as belonging to an active incident. No matching or dispatch action is connected here.</p>}
+                  {canModerate && selectedIncidentId && selectedFeature.data.sosId && (
+                    <div className="eoc-record-actions">
+                      {selectedFeature.data.status === "open" && (
                         <button
-                          className="btn-auto-match"
-                          onClick={() => handleAutoMatch(selectedFeature.data.id)}
+                          type="button"
+                          className="button button-outline"
+                          onClick={() => saveSosStatus(selectedFeature.data, "acknowledged")}
                         >
-                          ⚡ Auto-Match Nearest Rescue Team
+                          Acknowledge
                         </button>
-                        {selectedFeature.data.matchedResponder && (
-                          <div className="matched-box">
-                            <strong>Matched: {selectedFeature.data.matchedResponder.name}</strong> ({selectedFeature.data.matchedResponder.distance}, ETA: {selectedFeature.data.matchedResponder.eta})
-                            <button
-                              className="btn-dispatch"
-                              onClick={() => handleDispatch(selectedFeature.data.id)}
-                            >
-                              Dispatch Now
-                            </button>
-                          </div>
-                        )}
-                      </>
-                    ) : (
-                      <span className="badge-dispatched">✅ RESCUE TEAM DISPATCHED & EN ROUTE</span>
-                    )}
-                  </div>
+                      )}
+                      {["open", "acknowledged"].includes(selectedFeature.data.status) && (
+                        <button
+                          type="button"
+                          className="button button-outline"
+                          onClick={() => saveSosStatus(selectedFeature.data, "resolved")}
+                        >
+                          Mark resolved
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  <button type="button" className="button button-outline" onClick={() => setActiveTab("triage")}>
+                    View SOS records
+                  </button>
                 </div>
               )}
             </div>
@@ -925,9 +1254,41 @@ export default function EOCDashboard({ language = "en" }) {
         <div className="eoc-triage-view">
           <div className="triage-header">
             <div>
-              <h2>Citizen distress queue</h2>
-              <p>Review incoming requests by urgency, location, and support needs.</p>
+              <h2>Persisted SOS records</h2>
+              <p>{selectedIncident
+                ? `SOS records linked to ${selectedIncident.title}; new citizen reports appear on the next 15-second refresh.`
+                : "Records shown here have not been associated with an active incident. People counts and timestamps are displayed when provided."}</p>
             </div>
+            <label className="eoc-control-group">
+              <span className="eoc-label-small">URGENCY</span>
+              <select
+                className="eoc-select"
+                value={sosSeverityFilter}
+                onChange={(event) => setSosSeverityFilter(event.target.value)}
+              >
+                <option value="all">All urgency levels</option>
+                {[...new Set(sosList.map((sos) => sos.severity).filter(Boolean))]
+                  .sort()
+                  .map((severity) => (
+                    <option key={severity} value={severity}>{severity}</option>
+                  ))}
+              </select>
+            </label>
+            <label className="eoc-control-group">
+              <span className="eoc-label-small">STATUS</span>
+              <select
+                className="eoc-select"
+                value={sosStatusFilter}
+                onChange={(event) => setSosStatusFilter(event.target.value)}
+              >
+                <option value="all">All statuses</option>
+                {[...new Set(sosList.map((sos) => sos.status).filter(Boolean))]
+                  .sort()
+                  .map((status) => (
+                    <option key={status} value={status}>{status.replaceAll("_", " ")}</option>
+                  ))}
+              </select>
+            </label>
           </div>
 
           <div className="triage-table-wrapper">
@@ -940,16 +1301,22 @@ export default function EOCDashboard({ language = "en" }) {
                   <th>Category</th>
                   <th>Victims</th>
                   <th>Situation Details</th>
-                  <th>Responder Match & Dispatch</th>
+                  <th>Map</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredSos.map((sos) => (
-                  <tr key={sos.id} className={sos.severity === "critical" ? "row-critical" : "row-normal"}>
+                {filteredSos.length === 0 ? (
+                  <tr><td colSpan="7"><div className="eoc-empty-state"><strong>No SOS records match these filters</strong><span>Change urgency or status, or refresh the dashboard.</span></div></td></tr>
+                ) : filteredSos.map((sos) => (
+                  <tr
+                    key={sos.id}
+                    className={sos.severity === "critical" ? "row-critical" : "row-normal"}
+                    onClick={() => openFeature("sos", sos)}
+                  >
                     <td><code>{sos.id}</code></td>
                     <td>
                       <span className={`pill-score ${sos.severity}`}>
-                        {sos.score} · {sos.severity.toUpperCase()}
+                        {sos.severity || "Not reported"}
                       </span>
                     </td>
                     <td>
@@ -957,36 +1324,21 @@ export default function EOCDashboard({ language = "en" }) {
                       <div className="cell-sub">{sos.village}</div>
                     </td>
                     <td><span className="badge-category">{sos.need}</span></td>
-                    <td><strong>{sos.people}</strong></td>
+                    <td><strong>{sos.people ?? "Not reported"}</strong></td>
                     <td className="cell-details">{sos.details}</td>
                     <td>
-                      {sos.status === "dispatched" ? (
-                        <div className="dispatched-label">
-                          <span>🟢 Dispatched</span>
-                          <small>{sos.matchedResponder?.name || "SDRF Unit"}</small>
-                        </div>
-                      ) : (
-                        <div className="match-actions">
-                          {sos.matchedResponder ? (
-                            <div className="match-ready">
-                              <small>Matched: {sos.matchedResponder.name} ({sos.matchedResponder.eta})</small>
-                              <button
-                                className="btn-dispatch-compact"
-                                onClick={() => handleDispatch(sos.id)}
-                              >
-                                Dispatch Team
-                              </button>
-                            </div>
-                          ) : (
-                            <button
-                              className="btn-match-compact"
-                              onClick={() => handleAutoMatch(sos.id)}
-                            >
-                              ⚡ Auto-Match
-                            </button>
-                          )}
-                        </div>
-                      )}
+                      <button
+                        type="button"
+                        className="button button-outline"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          openFeature("sos", sos);
+                        }}
+                        disabled={!Number.isFinite(sos.lon) || !Number.isFinite(sos.lat)}
+                        title={!Number.isFinite(sos.lon) || !Number.isFinite(sos.lat) ? "No coordinates are available for this record" : "Show this record on the schematic map"}
+                      >
+                        {Number.isFinite(sos.lon) && Number.isFinite(sos.lat) ? "Show on map" : "No coordinates"}
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -996,115 +1348,74 @@ export default function EOCDashboard({ language = "en" }) {
         </div>
       )}
 
-      {/* TAB CONTENT 3: HYDROGRAPH & 72H ML FORECAST */}
+      {/* TAB CONTENT 3: PROVIDER SNAPSHOT */}
       {activeTab === "hydro" && (
         <div className="eoc-hydro-view">
           <div className="hydro-header">
             <div>
-              <h2>Birpur Barrage 72-Hour Flood Discharge Forecast</h2>
-              <p>Powered by XGBoost Machine Learning model trained on Bihar Surface Water daily discharge records.</p>
+              <h2>Flood provider snapshot</h2>
+              <p>Provider risk indicators from configured open providers—not a discharge hydrograph, official warning, or trained-model forecast.</p>
             </div>
             <div className="hydro-badges">
-              <span className="badge-model">Model: XGBoost Regressor (v2.1)</span>
-              <span className="badge-split">Chronological Holdout (2024–2025)</span>
+              <span className="badge-model">Provider indicator</span>
+              <span className="badge-split">Snapshot · not a time series</span>
             </div>
           </div>
 
           <div className="hydro-chart-panel">
-            <svg className="hydro-svg" viewBox="0 0 840 320" aria-label="Discharge Hydrograph">
-              {/* Gridlines */}
-              <line x1="60" y1="40" x2="800" y2="40" stroke="#254854" strokeWidth="1" strokeDasharray="3 3" />
-              <text x="15" y="45" fill="#88adb9" fontSize="10">10,000 m³</text>
-
-              <line x1="60" y1="90" x2="800" y2="90" stroke="#f5222d" strokeWidth="1.5" strokeDasharray="5 3" />
-              <text x="10" y="94" fill="#f5222d" fontSize="10" fontWeight="bold">8,000 (DANGER)</text>
-
-              <line x1="60" y1="180" x2="800" y2="180" stroke="#faad14" strokeWidth="1.2" strokeDasharray="4 4" />
-              <text x="10" y="184" fill="#faad14" fontSize="10">4,500 (WARNING)</text>
-
-              <line x1="60" y1="260" x2="800" y2="260" stroke="#254854" strokeWidth="1" />
-              <text x="15" y="264" fill="#88adb9" fontSize="10">2,000 m³</text>
-
-              {/* Shaded Danger zone */}
-              <rect x="60" y="40" width="740" height="50" fill="#f5222d" fillOpacity="0.1" />
-
-              {/* Data curve */}
-              {/* Points mapping:
-                  -48h: x=100, y=240 (5200)
-                  -36h: x=180, y=210 (5850)
-                  -24h: x=260, y=180 (6700)
-                  -12h: x=340, y=130 (7600)
-                  Now:  x=420, y=80  (8420)
-                  +12h: x=500, y=70  (8750)
-                  +24h: x=580, y=65  (8850)
-                  +48h: x=660, y=55  (9120)
-                  +72h: x=740, y=95  (7940)
-              */}
-              {/* Historical segment */}
-              <path
-                d="M 100 240 L 180 210 L 260 180 L 340 130 L 420 80"
-                fill="none"
-                stroke="#1890ff"
-                strokeWidth="3.5"
-              />
-
-              {/* ML Forecast segment (Dashed) */}
-              <path
-                d="M 420 80 L 500 70 L 580 65 L 660 55 L 740 95"
-                fill="none"
-                stroke="#ff4d4f"
-                strokeWidth="3.5"
-                strokeDasharray="6 4"
-              />
-
-              {/* Current time marker */}
-              <line x1="420" y1="30" x2="420" y2="270" stroke="#ffffff" strokeWidth="1.5" strokeDasharray="3 3" />
-              <text x="425" y="40" fill="#ffffff" fontSize="11" fontWeight="bold">CURRENT TIME</text>
-
-              {/* Data points */}
-              {HYDROGRAPH_SERIES.map((pt, idx) => {
-                const x = 100 + idx * 80;
-                // Calculate y: 10000 m³ -> y=40, 0 m³ -> y=300
-                const y = 300 - (pt.discharge / 10000) * 260;
+            <svg className="hydro-svg" viewBox="0 0 840 320" aria-label="Provider risk score comparison">
+              <text x="34" y="34" fill="#88adb9" fontSize="12">Provider score (0–100)</text>
+              {[0, 25, 50, 75, 100].map((score) => {
+                const y = 280 - score * 2.3;
                 return (
-                  <g key={pt.time}>
-                    <circle
-                      cx={x}
-                      cy={y}
-                      r={pt.isNow ? 6 : 4.5}
-                      fill={pt.isForecast ? "#ff4d4f" : pt.isNow ? "#ffffff" : "#1890ff"}
-                      stroke="#10252c"
-                      strokeWidth="2"
-                    />
-                    <text x={x} y={y - 12} textAnchor="middle" fill="#ffffff" fontSize="10" fontWeight="bold">
-                      {pt.discharge}
-                    </text>
-                    <text x={x} y="285" textAnchor="middle" fill="#88adb9" fontSize="10">
-                      {pt.time}
-                    </text>
+                  <g key={score}>
+                    <line x1="70" y1={y} x2="810" y2={y} stroke="#254854" strokeWidth="1" strokeDasharray="3 4" />
+                    <text x="28" y={y + 4} fill="#88adb9" fontSize="10">{score}</text>
                   </g>
                 );
               })}
+              {liveForecasts.filter((forecast) => Number.isFinite(Number(forecast.score))).length > 0
+                ? liveForecasts.filter((forecast) => Number.isFinite(Number(forecast.score))).slice(0, 9).map((forecast, idx) => {
+                const x = 105 + idx * 78;
+                const y = 280 - (Math.max(0, Math.min(100, Number(forecast.score))) * 2.3);
+                const color = forecast.level === "red" ? "#cf6259" : forecast.level === "orange" ? "#c39a45" : "#398b72";
+                return (
+                  <g key={`${forecast.region}-${idx}`}>
+                    <circle cx={x} cy={y} r="7" fill={color} stroke="#fff" strokeWidth="1.5" />
+                    <text x={x} y={y - 12} textAnchor="middle" fill="#ffffff" fontSize="10" fontWeight="bold">
+                      {forecast.score}
+                    </text>
+                    <text x={x} y="304" textAnchor="middle" fill="#88adb9" fontSize="9">
+                      {forecast.region?.slice(0, 12) || "Sentinel"}
+                    </text>
+                  </g>
+                );
+              }) : (
+                <text x="420" y="160" textAnchor="middle" fill="#88adb9" fontSize="13">
+                  Provider snapshot unavailable
+                </text>
+              )}
             </svg>
           </div>
 
           <div className="hydro-analysis-cards">
             <div className="analysis-card">
-              <h3>24-Hour Horizon Prediction</h3>
-              <div className="analysis-val text-danger">8,850 m³/s</div>
-              <p>Forecasts flow increasing by <strong>+5.1%</strong> over next 24 hours. Peak discharge expected near Kursela within 36-44 hours.</p>
+              <h3>Provider indicators</h3>
+              <div className="analysis-val text-danger">{stats.liveForecastCount ? `${stats.liveForecastCount} scores` : "Unavailable"}</div>
+              <p>{stats.highestForecast ? `${stats.highestForecast.region} has the highest score in this snapshot.` : "No provider snapshot is available."}</p>
             </div>
             <div className="analysis-card">
-              <h3>Hydrological Risk Assessment</h3>
-              <div className="analysis-val text-warning">HIGH CREST RISK</div>
-              <p>Birpur Barrage discharge remains above the verified <strong>8,000 m³/s danger mark</strong>. Immediate alert required for Supaul embankments.</p>
+              <h3>Incident status</h3>
+              <div className="analysis-val text-warning">{selectedIncident?.status || "No incident selected"}</div>
+              <p>Operator-managed status does not replace an official warning or independently confirm conditions.</p>
             </div>
             <div className="analysis-card">
-              <h3>Feature Importance (SHAP Explainability)</h3>
+              <h3>Provider Readiness</h3>
               <ul className="shap-list">
-                <li><span>Birpur 48-hour lag discharge:</span> <strong>42% impact</strong></li>
-                <li><span>Upstream catchment rainfall (IMD):</span> <strong>34% impact</strong></li>
-                <li><span>Rate of water level rise:</span> <strong>24% impact</strong></li>
+                <li><span>Telemetry initialized:</span> <strong>{backendStatus?.telemetry?.available ? "Yes" : "No"}</strong></li>
+                <li><span>Last provider update:</span> <strong>{backendStatus?.telemetry?.last_update ? new Date(backendStatus.telemetry.last_update).toLocaleTimeString() : "None"}</strong></li>
+                <li><span>Incident registry:</span> <strong>{incidents.length ? "Operator-managed" : "No open incidents"}</strong></li>
+                <li><span>Real flood model:</span> <strong>Not available</strong></li>
               </ul>
             </div>
           </div>
@@ -1116,17 +1427,80 @@ export default function EOCDashboard({ language = "en" }) {
         <div className="eoc-shelters-view">
           <div className="shelters-header">
             <div>
-              <h2>Designated Emergency Shelters (Lower Kosi Basin)</h2>
-              <p>Government schools, flood shelters, and community health centers designated for evacuation.</p>
+              <h2>{selectedIncidentId ? "Incident shelter operations" : "Database shelter records"}</h2>
+              <p>{selectedIncidentId
+                ? "Responder-entered status and occupancy for this incident; values are not an external live sensor feed."
+                : "Catalogue occupancy is not a live availability feed; freshness and incident association are not provided."}</p>
             </div>
             <div className="shelter-summary-tag">
-              Total Shelters: <strong>{sheltersList.length}</strong> · Capacity: <strong>{stats.totalCapacity}</strong> · Available: <strong>{stats.totalCapacity - stats.totalOccupied}</strong>
+              Shelters: <strong>{sheltersList.length}</strong> · Capacity: <strong>{stats.totalCapacity || "Not recorded"}</strong> · Occupancy: <strong>{stats.totalOccupied ?? (stats.occupancyKnownCount ? "Incomplete" : "Not reported")}</strong>
             </div>
           </div>
+          {canModerate && selectedIncidentId && availableShelters.length > 0 && (
+            <div className="eoc-incident-lifecycle">
+              <label>
+                Add a catalogue shelter to this incident
+                <select
+                  className="eoc-select"
+                  value={selectedCatalogShelterId}
+                  onChange={(event) => setSelectedCatalogShelterId(event.target.value)}
+                >
+                  <option value="">Select a shelter record</option>
+                  {availableShelters.map((shelter) => (
+                    <option key={shelter.id} value={shelter.id}>
+                      {shelter.name} · {shelter.verification_status} · {shelter.source_name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                className="button button-outline"
+                disabled={!selectedCatalogShelterId}
+                onClick={linkCatalogShelter}
+              >
+                Link shelter to incident
+              </button>
+            </div>
+          )}
+          <label className="eoc-control-group eoc-shelter-filter">
+            <span className="eoc-label-small">RECORDED OCCUPANCY</span>
+            <select
+              className="eoc-select"
+              value={shelterOccupancyFilter}
+              onChange={(event) => setShelterOccupancyFilter(event.target.value)}
+            >
+              <option value="all">All records</option>
+              <option value="high">85% or more</option>
+              <option value="lower">Below 85%</option>
+            </select>
+          </label>
+          <p className="catalog-disclaimer">
+            {sheltersList.length
+              ? selectedIncidentId
+                ? "Values are scoped to this incident and include the latest operator timestamp. No external occupancy feed is connected."
+                : "Occupancy values are database records only. Unverified or stale records must not be treated as confirmed availability."
+              : selectedIncidentId
+                ? "No shelters have been linked to this incident yet. A responder can add one by publishing an operational update."
+                : "No shelter records were returned by the database. The dashboard is not showing static shelter locations."}
+          </p>
 
+          {sheltersList.length === 0 ? (
+            <div className="eoc-empty-state">
+              <strong>No database shelter records available</strong>
+              <span>Records are shown only when returned by the backend.</span>
+            </div>
+          ) : filteredShelters.length === 0 ? (
+            <div className="eoc-empty-state">
+              <strong>No shelter records match this filter</strong>
+              <span>Change the occupancy filter to see other catalogue records.</span>
+            </div>
+          ) : (
           <div className="shelters-grid">
             {filteredShelters.map((s) => {
-              const occPct = Math.round((s.occupied / s.capacity) * 100);
+              const occPct = s.capacity && s.occupied !== null
+                ? Math.round((s.occupied / s.capacity) * 100)
+                : null;
               const isHigh = occPct >= 85;
               const isMed = occPct >= 65;
 
@@ -1138,40 +1512,111 @@ export default function EOCDashboard({ language = "en" }) {
                       <h4>{s.name}</h4>
                     </div>
                     <span className={`shelter-status-badge ${isHigh ? "status-high" : "status-ok"}`}>
-                      {occPct}% Full
+                      {s.operationalStatus
+                        ? s.operationalStatus.toUpperCase()
+                        : s.occupied === null
+                          ? "Occupancy unknown"
+                          : s.capacity ? `${occPct}% recorded` : "Occupancy recorded"}
                     </span>
                   </div>
 
-                  <div className="shelter-progress-bar">
+                  {occPct !== null && <div className="shelter-progress-bar" aria-label={`${occPct}% recorded occupancy`}>
                     <div
                       className="shelter-progress-fill"
                       style={{
-                        width: `${occPct}%`,
+                        width: `${Math.min(100, occPct)}%`,
                         backgroundColor: isHigh ? "#ff4d4f" : isMed ? "#faad14" : "#52c41a",
                       }}
                     />
-                  </div>
+                  </div>}
 
                   <div className="shelter-metrics">
-                    <div>Capacity: <strong>{s.occupied} / {s.capacity}</strong></div>
-                    <div>Food Buffer: <strong>{s.foodDays} Days</strong></div>
-                    <div>Medical Officers: <strong>{s.medicalStaff}</strong></div>
-                    <div>Helpline: <code>{s.contact}</code></div>
+                    <div>Occupancy: <strong>{s.occupied === null ? "Not reported" : `${s.occupied}${s.capacity ? ` / ${s.capacity}` : ""}`}</strong></div>
+                    <div>Updated: <strong>{s.updatedAt ? new Date(s.updatedAt).toLocaleString() : "Not reported"}</strong></div>
+                    <div>Verification: <strong>{s.verificationStatus || "unverified"}</strong></div>
+                    <div>Source: <strong>{s.sourceName || "Database record"}</strong></div>
+                    <div>Coordinates: <code>{Number(s.lat).toFixed(4)}, {Number(s.lon).toFixed(4)}</code></div>
                   </div>
+                  {s.updateNote && <p className="catalog-disclaimer">{s.updateNote}</p>}
+                  {canModerate && selectedIncidentId && (
+                    <div className="eoc-shelter-update">
+                      <label>
+                        Status
+                        <select
+                          value={shelterUpdates[s.shelterId]?.status ?? s.operationalStatus ?? "unknown"}
+                          onChange={(event) => setShelterUpdates({
+                            ...shelterUpdates,
+                            [s.shelterId]: {
+                              ...shelterUpdates[s.shelterId],
+                              status: event.target.value,
+                            },
+                          })}
+                        >
+                          <option value="unknown">Unknown</option>
+                          <option value="open">Open</option>
+                          <option value="limited">Limited</option>
+                          <option value="closed">Closed</option>
+                        </select>
+                      </label>
+                      <label>
+                        Current occupancy
+                        <input
+                          type="number"
+                          min="0"
+                          max={s.capacity || 10000000}
+                          value={shelterUpdates[s.shelterId]?.occupancy ?? (s.occupied ?? "")}
+                          onChange={(event) => setShelterUpdates({
+                            ...shelterUpdates,
+                            [s.shelterId]: {
+                              ...shelterUpdates[s.shelterId],
+                              occupancy: event.target.value,
+                            },
+                          })}
+                        />
+                      </label>
+                      <label>
+                        Update note
+                        <input
+                          maxLength={500}
+                          value={shelterUpdates[s.shelterId]?.note ?? s.updateNote}
+                          onChange={(event) => setShelterUpdates({
+                            ...shelterUpdates,
+                            [s.shelterId]: {
+                              ...shelterUpdates[s.shelterId],
+                              note: event.target.value,
+                            },
+                          })}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        className="button button-outline"
+                        onClick={() => saveShelterUpdate(s)}
+                      >
+                        Publish update
+                      </button>
+                    </div>
+                  )}
+                  <button type="button" className="button button-outline" onClick={() => openFeature("shelter", s)}>
+                    Show on map
+                  </button>
                 </div>
               );
             })}
           </div>
+          )}
         </div>
       )}
 
-      {/* TAB CONTENT 5: MULTILINGUAL CAP ALERT BROADCASTER */}
+      {activeTab === "catalog" && <GeographyCatalog />}
+
+      {/* TAB CONTENT 6: MULTILINGUAL CAP ALERT BROADCASTER */}
       {activeTab === "broadcast" && (
         <div className="eoc-broadcast-view">
           <div className="broadcast-header">
             <div>
               <h2>Multilingual alert bulletin</h2>
-              <p>Review emergency warning text in English, Hindi, and Maithili before using an authorized distribution channel.</p>
+              <p>Sample wording only. This view cannot send or authorize an alert.</p>
             </div>
           </div>
 
@@ -1179,19 +1624,24 @@ export default function EOCDashboard({ language = "en" }) {
             <div className="broadcast-composer">
               <h3>Bulletin settings</h3>
               <div className="form-group">
-                <label>Target area</label>
+                <label htmlFor="eoc-bulletin-area">Preview incident</label>
                 <select
-                  value={broadcastTarget}
-                  onChange={(e) => {
-                    setBroadcastTarget(e.target.value);
-                    setBroadcastPrepared(false);
-                  }}
+                  id="eoc-bulletin-area"
+                  value={selectedIncidentId}
                   className="eoc-select"
+                  disabled={!incidents.some((incident) => incident.status !== "closed")}
+                  onChange={(event) => {
+                    setSelectedIncidentId(event.target.value);
+                    loadDashboard(false, event.target.value);
+                  }}
                 >
-                  <option value="Supaul & Saharsa">Supaul & Saharsa (Kosi Embankment Ring)</option>
-                  <option value="All 4 Districts">All 4 Focus Districts (Supaul, Saharsa, Madhepura, Purnia)</option>
-                  <option value="Supaul Only">Supaul District Only</option>
-                  <option value="Saharsa Only">Saharsa District Only</option>
+                  {incidents.filter((incident) => incident.status !== "closed").length === 0
+                    ? <option value="">No active incident</option>
+                    : incidents.filter((incident) => incident.status !== "closed").map((incident) => (
+                      <option key={incident.id} value={String(incident.id)}>
+                        {incident.title} · {incident.area_name}
+                      </option>
+                    ))}
                 </select>
               </div>
 
@@ -1205,8 +1655,8 @@ export default function EOCDashboard({ language = "en" }) {
                   }}
                   className="eoc-select"
                 >
-                  <option value="extreme">Extreme Warning (Red Alert - Immediate Threat)</option>
-                  <option value="warning">Severe Watch (Orange Alert - Water Level Rising)</option>
+                  <option value="extreme">High-urgency sample</option>
+                  <option value="warning">Preparedness sample</option>
                 </select>
               </div>
 
@@ -1275,12 +1725,12 @@ export default function EOCDashboard({ language = "en" }) {
                 className="btn-prepare-bulletin"
                 onClick={() => setBroadcastPrepared(true)}
               >
-                Prepare multilingual alert bulletin
+                Review sample wording
               </button>
 
               {broadcastPrepared && (
                 <div className="broadcast-success-banner">
-                  <strong>Bulletin prepared.</strong> Review the wording and distribute through an authorized alerting channel.
+                  <strong>Sample wording selected.</strong> No alert was created or sent.
                 </div>
               )}
             </div>

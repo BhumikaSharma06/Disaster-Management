@@ -24,7 +24,8 @@ The planned data inputs are archived IMD rainfall, CWC gauge/discharge,
 ISRO MOSDAC/Bhuvan flood extent, and OSM road/shelter data. Do not invent
 government data URLs or scrape restricted portals. Use a mock alert gateway;
 real SMS and live deployment are out of scope. Region-aware Bhashini
-localization and PWA/IndexedDB offline support are planned, not yet implemented.
+localization and general PWA/offline caching are planned, not yet implemented.
+IndexedDB is used for the implemented help/supply submission retry queue only.
 
 The stack is Python 3.11/FastAPI/SQLAlchemy/GeoAlchemy2/PostGIS, with the
 planned ML tools (pandas, scikit-learn, XGBoost, joblib, geopandas, rasterio,
@@ -44,8 +45,9 @@ map and technology responsibilities.
 - Do not dispatch real alerts. Use the mock alert gateway.
 - Keep Bhashini credentials and service endpoints in environment configuration.
   Do not hard-code credentials or invent API endpoints or payload formats.
-- Keep offline/PWA behavior modular; do not claim that offline support is
-  implemented until its service worker and local data storage are in place.
+- Keep PWA guide/map caching modular; do not claim it is implemented until its
+  service worker and local data storage are in place. The help/supply forms do
+  have a separate IndexedDB submission queue with conflict triage.
 - Prefer small, typed, documented changes that are straightforward to explain
   in a student project viva. Update `CONTEXT.md` when architecture or status
   changes.
@@ -62,6 +64,20 @@ Keep data work real-data-only:
 use synthetic observations only in named unit-test fixtures. No real model
 metrics or trained model exist yet. Prediction serving, replay, translation,
 routing, matching, real alert dispatch, and offline caching are not implemented.
+User authentication is implemented with verified email, Argon2 password hashes,
+JWT access tokens invalidated by token-version changes on logout, and
+responder/admin access checks. Local development email
+uses Mailpit. Responder status is granted only after admin approval of a
+verified user's role request; applicants remain ordinary users until approval.
+Admin roles are initialized using operator-selected credentials through the
+one-time bootstrap CLI; administrators can sign in with a username or email,
+while regular accounts use email. The supply responder inbox is a persistent
+human-coordination queue, not automated or emergency dispatch. Offers support
+approved-responder assignment, actual pickup quantities, cancellation rollback,
+and delivered tracking; EOC responders/admins can flag or close spam/duplicate
+requests. Public submissions use shared rate limits, PostGIS distance sorting
+when coordinates are explicitly supplied, and IndexedDB sync that parks
+non-retryable 4xx conflicts for user review.
 The frontend presents 14 hazard categories and hazard-specific safety guides
 that expand directly within their cards as a Before/During/After table, with
 emergency, ambulance, and relevant fire-service contact numbers. English
@@ -70,5 +86,7 @@ local country-level lookup. Bhashini credentials are not configured, so the
 local translation cache is used where available and uncached safety text
 remains in English. Device coordinates are requested only after a user action
 in the location-sharing flow and are not automatically transmitted or stored.
-Forecasting, shelters, routing, translation service requests, dispatch, form
-submission, and offline caching remain unconnected.
+Forecasting, shelter operations, routing, translation service requests, real
+dispatch, and PWA/offline map or guide caching remain unconnected. The separate
+SOS demonstration form remains session-only; help and supply submissions are
+connected to the persistent API.

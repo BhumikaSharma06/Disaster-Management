@@ -1,6 +1,20 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import EOCDashboard from "./components/EOCDashboard.jsx";
+import { AdminUsers, AuthView } from "./components/AuthViews.jsx";
+import ProfileSettings from "./components/ProfileSettings.jsx";
+import { ResponderInbox, Response } from "./components/SupplyCoordination.jsx";
+import SosReportForm from "./components/SosReportForm.jsx";
+import {
+  clearAccessToken,
+  getAccessToken,
+  getCurrentUser,
+  logoutAccount,
+  requestResponderRole,
+} from "./api/auth.js";
+import { getInboxCount } from "./api/coordination.js";
+import { getPublishedSafetyTips } from "./api/safety.js";
+import { syncCoordinationQueue } from "./offline/syncCoordinationQueue.js";
 import { HAZARDS, getEmergencyContacts } from "./data/hazards.js";
 import {
   getTranslationFallbackNotice,
@@ -10,6 +24,13 @@ import {
   detectDeviceRegion,
   getLanguageLabel,
 } from "./i18n/deviceLanguage.js";
+import {
+  getCoreStatus,
+  getLiveForecasts,
+  getLocalReadiness,
+  getNearestShelters,
+  searchPlaces,
+} from "./api/geography.js";
 
 const translations = {
   en: {
@@ -17,6 +38,10 @@ const translations = {
     prepare: "Be prepared",
     during: "During a disaster",
     response: "Get or offer help",
+    responders: "Responder inbox",
+    admin: "Admin accounts",
+    auth: "Account access",
+    profile: "My profile",
     data: "Data & sources",
     eoc: "EOC Dashboard",
     offline: "You’re offline",
@@ -41,12 +66,17 @@ const translations = {
     allHazards: "All hazards",
     emergencyContacts: "Emergency contacts",
     contactCoverage: "Availability may vary by area. If a number does not connect, call 112.",
+    responderBadge: "Responder inbox",
   },
   hi: {
     overview: "अवलोकन",
     prepare: "तैयार रहें",
     during: "आपदा के दौरान",
     response: "मदद लें या दें",
+    responders: "रिस्पॉन्डर इनबॉक्स",
+    admin: "व्यवस्थापक खाते",
+    auth: "खाता प्रवेश",
+    profile: "मेरी प्रोफ़ाइल",
     data: "डेटा और स्रोत",
     eoc: "ईओसी डैशबोर्ड",
     offline: "आप ऑफ़लाइन हैं",
@@ -71,6 +101,7 @@ const translations = {
     allHazards: "सभी आपदाएँ",
     emergencyContacts: "आपातकालीन संपर्क",
     contactCoverage: "सेवा की उपलब्धता क्षेत्र के अनुसार बदल सकती है। संपर्क न होने पर 112 पर कॉल करें।",
+    responderBadge: "रिस्पॉन्डर इनबॉक्स",
   },
 };
 
@@ -79,6 +110,7 @@ const navigation = [
   { id: "prepare", icon: "shield" },
   { id: "during", icon: "life" },
   { id: "response", icon: "people" },
+  { id: "responders", icon: "health" },
   { id: "data", icon: "database" },
   { id: "eoc", icon: "alert" },
 ];
@@ -128,19 +160,76 @@ function Icon({ name, size = 20 }) {
 }
 
 function App() {
-  const [activeView, setActiveView] = useState("overview");
+  const [activeView, setActiveView] = useState(() =>
+    new URLSearchParams(window.location.search).has("verify_token") ? "auth" : "overview"
+  );
   const [selectedHazard, setSelectedHazard] = useState("all");
   const [language, setLanguage] = useState("en");
   const [languageOptions, setLanguageOptions] = useState(["en", "hi"]);
   const [deviceRegion, setDeviceRegion] = useState("Checking device region");
   const [online, setOnline] = useState(navigator.onLine);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [responseType, setResponseType] = useState("request");
-  const [formMessage, setFormMessage] = useState("");
+  const [inboxCount, setInboxCount] = useState(0);
+  const [coordinationCountError, setCoordinationCountError] = useState("");
+  const [coordinationSyncError, setCoordinationSyncError] = useState("");
+  const [currentUser, setCurrentUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authStatusMessage, setAuthStatusMessage] = useState("");
+  const [roleRequestMessage, setRoleRequestMessage] = useState("");
+  const [logoutError, setLogoutError] = useState("");
+  const [authMode, setAuthMode] = useState("login");
+  const [authViewKey, setAuthViewKey] = useState(0);
+  const [verificationToken, setVerificationToken] = useState(() =>
+    new URLSearchParams(window.location.search).get("verify_token")
+  );
   const languageWasSelected = useRef(false);
+  const canAccessResponderInbox = Boolean(currentUser?.is_responder || currentUser?.is_admin);
+  const refreshCurrentUser = useCallback(async () => {
+    try {
+      const user = await getCurrentUser();
+      setCurrentUser(user);
+      setAuthStatusMessage("");
+    } catch (error) {
+      if (error.status === 401 || error.status === 403) {
+        clearAccessToken();
+        setCurrentUser(null);
+        setAuthStatusMessage("Your sign-in session or account access is no longer valid. Sign in again.");
+      } else {
+        setAuthStatusMessage(`Could not verify your account access: ${error.message}`);
+      }
+    }
+  }, []);
+
+  const refreshInboxCount = useCallback(async () => {
+    if (!canAccessResponderInbox) {
+      setInboxCount(0);
+      setCoordinationCountError("");
+      return;
+    }
+    try {
+      const result = await getInboxCount();
+      setInboxCount(result.count);
+      setCoordinationCountError("");
+    } catch (error) {
+      setInboxCount(0);
+      if (error.status === 401 || error.status === 403) {
+        await refreshCurrentUser();
+        setCoordinationCountError("");
+      } else {
+        setCoordinationCountError(error.message);
+      }
+    }
+  }, [canAccessResponderInbox, refreshCurrentUser]);
 
   const text = translations[language];
   const selectedModule = HAZARDS.find((module) => module.id === selectedHazard);
+  const visibleNavigation = [
+    ...navigation.filter((item) =>
+      item.id !== "responders" || canAccessResponderInbox
+    ),
+    ...(currentUser ? [{ id: "profile", icon: "people" }] : []),
+    ...(currentUser?.is_admin ? [{ id: "admin", icon: "health" }] : []),
+  ];
 
   useEffect(() => {
     detectDeviceRegion(
@@ -171,21 +260,107 @@ function App() {
     };
   }, []);
 
+  useEffect(() => {
+    refreshInboxCount();
+    const intervalId = window.setInterval(refreshInboxCount, 30000);
+    window.addEventListener("online", refreshInboxCount);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("online", refreshInboxCount);
+    };
+  }, [refreshInboxCount, currentUser?.id, currentUser?.is_admin, currentUser?.is_responder]);
+
+  useEffect(() => {
+    let active = true;
+    const syncPendingSubmissions = async () => {
+      try {
+        const result = await syncCoordinationQueue();
+        if (!active) return;
+        if (result.error) {
+          setCoordinationSyncError(result.error.message);
+          return;
+        }
+        setCoordinationSyncError("");
+        if (result.synced > 0) refreshInboxCount();
+      } catch (error) {
+        if (active) setCoordinationSyncError(error.message);
+      }
+    };
+    syncPendingSubmissions();
+    const intervalId = window.setInterval(syncPendingSubmissions, 30000);
+    window.addEventListener("online", syncPendingSubmissions);
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+      window.removeEventListener("online", syncPendingSubmissions);
+    };
+  }, [refreshInboxCount]);
+
+  useEffect(() => {
+    const token = getAccessToken();
+    if (!token) {
+      setAuthLoading(false);
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    getCurrentUser(controller.signal)
+      .then(setCurrentUser)
+      .catch((error) => {
+        if (error.name !== "AbortError") {
+          clearAccessToken();
+          setCurrentUser(null);
+          setAuthStatusMessage("Your saved sign-in session could not be verified. Please sign in again.");
+        }
+      })
+      .finally(() => setAuthLoading(false));
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    if (verificationToken) {
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, [verificationToken]);
+
   function navigate(view) {
     setActiveView(view);
     setMobileMenuOpen(false);
-    setFormMessage("");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  function submitLocalForm(event) {
-    event.preventDefault();
-    setFormMessage(
-      language === "en"
-        ? "Draft recorded on this page only. It has not been sent to an emergency service."
-        : "यह केवल इस पृष्ठ पर ड्राफ़्ट है। यह किसी आपातकालीन सेवा को नहीं भेजा गया है।",
-    );
-    event.currentTarget.reset();
+  function openAccountAccess(mode = "login") {
+    setAuthMode(mode);
+    setAuthViewKey((key) => key + 1);
+    navigate("auth");
+  }
+
+  async function signOut() {
+    setLogoutError("");
+    const logoutRequest = logoutAccount();
+    clearAccessToken();
+    setCurrentUser(null);
+    setRoleRequestMessage("");
+    setAuthStatusMessage("");
+    setMobileMenuOpen(false);
+    navigate("overview");
+
+    try {
+      await logoutRequest;
+    } catch (error) {
+      setLogoutError(`Signed out on this device, but server logout could not be confirmed: ${error.message}`);
+    }
+  }
+
+  async function submitResponderRoleRequest() {
+    setRoleRequestMessage("");
+    try {
+      const updatedUser = await requestResponderRole();
+      setCurrentUser(updatedUser);
+      setRoleRequestMessage("Responder access requested. You can continue using AapdaSetu as a community user while an admin reviews your request.");
+    } catch (error) {
+      setRoleRequestMessage(error.message);
+    }
   }
 
   return (
@@ -218,7 +393,7 @@ function App() {
         <div className="pilot-label">ALL-HAZARD RESILIENCE</div>
         <div className="nav-caption">DISASTER LIFECYCLE</div>
         <nav className="primary-nav" aria-label="Main navigation">
-          {navigation.map((item, index) => (
+          {visibleNavigation.map((item, index) => (
             <button
               key={item.id}
               className={`nav-item ${activeView === item.id ? "nav-item-active" : ""}`}
@@ -227,6 +402,9 @@ function App() {
             >
               <span className="nav-icon"><Icon name={item.icon} /></span>
               <span>{text[item.id]}</span>
+              {item.id === "responders" && (
+                <span className="nav-count" aria-label={`${text.responderBadge} (${inboxCount})`}>{inboxCount}</span>
+              )}
               {index === 0 && <span className="nav-dot" />}
             </button>
           ))}
@@ -288,10 +466,44 @@ function App() {
                 ))}
               </select>
             </label>
+            <div className="account-actions">
+              {authLoading ? (
+                <span className="account-loading">Checking account…</span>
+              ) : currentUser ? (
+                <>
+                  <span className="account-identity">
+                    <strong>{currentUser.full_name}</strong>
+                    <small>{currentUser.is_super_admin ? "Super Admin" : currentUser.is_admin ? "Admin" : currentUser.is_responder ? "Approved responder" : currentUser.responder_request_status === "pending" ? "Responder approval pending" : "Community user"}</small>
+                  </span>
+                  {!currentUser.is_admin && !currentUser.is_responder && currentUser.responder_request_status !== "pending" && (
+                    <button className="account-button account-responder-request" type="button" onClick={submitResponderRoleRequest}>
+                      Request responder access
+                    </button>
+                  )}
+                  <button className="account-button" type="button" onClick={signOut}>Log out</button>
+                </>
+              ) : (
+                <>
+                  <button className="account-button" type="button" onClick={() => openAccountAccess("login")}>Sign in</button>
+                  <button className="account-button account-button-primary" type="button" onClick={() => openAccountAccess("register")}>Create account</button>
+                </>
+              )}
+            </div>
           </div>
         </header>
 
         <main className="content">
+          {logoutError && <div className="auth-message auth-message-error" role="alert">{logoutError}</div>}
+          {authStatusMessage && <div className="auth-message auth-message-error" role="alert">{authStatusMessage}</div>}
+          {coordinationCountError && ["response", "responders", "eoc"].includes(activeView) && (
+            <div className="auth-message auth-message-error" role="alert">{coordinationCountError}</div>
+          )}
+          {coordinationSyncError && activeView === "response" && (
+            <div className="auth-message auth-message-error" role="alert">
+              A saved submission has not synced yet: {coordinationSyncError}
+            </div>
+          )}
+          {roleRequestMessage && <div className="role-request-message" role="status">{roleRequestMessage}</div>}
           <div className="page-heading">
             <div>
               <p className="eyebrow">{text.subtitle}</p>
@@ -325,15 +537,78 @@ function App() {
             />
           )}
           {activeView === "response" && (
-            <Response
-              responseType={responseType}
-              setResponseType={setResponseType}
-              onSubmit={submitLocalForm}
-              formMessage={formMessage}
+            <>
+              <SosReportForm />
+              <Response
+                language={language}
+                currentUser={currentUser}
+                onOpenInbox={() => navigate("responders")}
+                submissionCount={inboxCount}
+                onCountChanged={refreshInboxCount}
+                canOpenInbox={canAccessResponderInbox}
+              />
+            </>
+          )}
+          {activeView === "responders" && (
+            authLoading ? null : !currentUser ? (
+              <AccessNotice
+                title="Responder access requires an account"
+                message="Sign in with a verified account marked as a responder to open responder tools."
+                onSignIn={() => openAccountAccess("login")}
+              />
+            ) : !canAccessResponderInbox ? (
+              <AccessNotice
+                title="Responder role required"
+                message="This account is not marked as a responder. You can still submit a help request or supply offer from Get or offer help."
+              />
+            ) : (
+              <ResponderInbox
+                language={language}
+                onCountChanged={refreshInboxCount}
+                currentUser={currentUser}
+                submissionCount={inboxCount}
+                onAccessDenied={refreshCurrentUser}
+              />
+            )
+          )}
+          {activeView === "admin" && (
+            currentUser?.is_admin
+              ? <AdminUsers currentUser={currentUser} />
+              : <AccessNotice
+                  title="Administrator access required"
+                  message="This area is restricted to administrator accounts."
+                  onSignIn={!currentUser ? () => openAccountAccess("login") : undefined}
+                />
+          )}
+          {activeView === "auth" && (
+            <AuthView
+              key={authViewKey}
+              initialMode={authMode}
+              verificationToken={verificationToken}
+              onAuthenticated={(user) => {
+                setCurrentUser(user);
+                setAuthStatusMessage("");
+                setLogoutError("");
+                setVerificationToken(null);
+                navigate(user.is_admin ? "admin" : "overview");
+              }}
+            />
+          )}
+          {activeView === "profile" && currentUser && (
+            <ProfileSettings
+              currentUser={currentUser}
+              onProfileUpdated={setCurrentUser}
             />
           )}
           {activeView === "data" && <DataSources />}
-          {activeView === "eoc" && <EOCDashboard language={language} />}
+          {activeView === "eoc" && (
+            <EOCDashboard
+              language={language}
+              onCoordinationUpdated={refreshInboxCount}
+              canModerate={Boolean(currentUser?.is_admin || currentUser?.is_responder)}
+              canManageIncidents={Boolean(currentUser?.is_admin)}
+            />
+          )}
 
           <footer className="page-footer">
             <span>AapdaSetu · All-hazard disaster readiness</span>
@@ -343,7 +618,7 @@ function App() {
       </div>
 
       <nav className="mobile-nav" aria-label="Quick navigation">
-        {navigation.map((item) => (
+        {visibleNavigation.map((item) => (
           <button
             key={item.id}
             className={activeView === item.id ? "mobile-nav-active" : ""}
@@ -352,6 +627,9 @@ function App() {
           >
             <Icon name={item.icon} size={19} />
             <span>{text[item.id]}</span>
+            {item.id === "responders" && (
+              <span className="nav-count" aria-label={`${text.responderBadge} (${inboxCount})`}>{inboxCount}</span>
+            )}
           </button>
         ))}
       </nav>
@@ -365,6 +643,10 @@ function pageTitle(view, text) {
     prepare: text.prepare,
     during: text.during,
     response: text.response,
+    responders: text.responders,
+    admin: text.admin,
+    auth: text.auth,
+    profile: text.profile,
     data: text.data,
     eoc: "District Emergency Operations Center (DEOC)",
   };
@@ -377,20 +659,44 @@ function pageDescription(view, language) {
       overview: "One platform for communities preparing for different kinds of disasters across India.",
       prepare: "Build practical household readiness before local risks increase.",
       during: "Simple, practical safety guidance. Follow local authorities for official instructions.",
-      response: "Share a need or offer support. Requests entered here are not sent to responders.",
+      response: "Request essential relief supplies or pledge available items for coordinated responder delivery.",
+      responders: "Review, claim, and track active help requests and supply offers across your response area.",
+      admin: "Manage account visibility and review registered roles.",
+      auth: "Sign in or create an account to access role-gated features.",
+      profile: "Manage your saved contact details and usual address for quicker form filling.",
       data: "See data availability for services and information across hazard areas.",
-      eoc: "Situation overview · Lower Kosi Basin · River telemetry, GIS map, SOS triage, shelter capacity, and multilingual alert bulletins.",
+      eoc: "Situation overview · live service status, coordination records, readiness information, and response capacity.",
     },
     hi: {
       overview: "उपलब्ध जानकारी, बाकी जानकारी और अगले कदम एक जगह देखें।",
       prepare: "स्थानीय जोखिम बढ़ने से पहले घर की व्यावहारिक तैयारी करें।",
       during: "सरल सुरक्षा सुझाव। आधिकारिक निर्देशों के लिए स्थानीय प्रशासन की बात मानें।",
-      response: "ज़रूरत बताएँ या सहायता दें।",
+      response: "रिस्पॉन्डर समन्वय के लिए आवश्यक राहत सामग्री का अनुरोध करें या उपलब्ध वस्तुएँ देने का प्रस्ताव दें।",
+      responders: "अपने प्रतिक्रिया क्षेत्र में सक्रिय सहायता अनुरोध और सामग्री प्रस्ताव देखें, स्वीकारें और उनकी प्रगति दर्ज करें।",
+      admin: "खातों और पंजीकृत भूमिकाओं की समीक्षा करें।",
+      auth: "भूमिका-आधारित सुविधाओं के लिए साइन इन करें या खाता बनाएँ।",
+      profile: "फॉर्म जल्दी भरने के लिए अपने संपर्क विवरण और सामान्य पता प्रबंधित करें।",
       data: "आपदा सेवाओं और स्थानीय जानकारी की उपलब्धता देखें।",
-      eoc: "स्थिति का अवलोकन · निचला कोसी बेसिन · नदी टेलीमेट्री, जीआईएस मानचित्र, एसओएस ट्राइएज, आश्रय क्षमता और बहुभाषी चेतावनी बुलेटिन।",
+      eoc: "स्थिति का अवलोकन · सेवाओं की स्थिति, समन्वय रिकॉर्ड, तैयारी की जानकारी और सहायता क्षमता।",
     },
   };
   return descriptions[language]?.[view] || descriptions.en[view];
+}
+
+function AccessNotice({ title, message, onSignIn }) {
+  return (
+    <section className="panel access-notice">
+      <span className="access-notice-icon"><Icon name="health" size={23} /></span>
+      <span className="section-kicker">ROLE-RESTRICTED AREA</span>
+      <h2>{title}</h2>
+      <p>{message}</p>
+      {onSignIn && (
+        <button className="button button-primary" type="button" onClick={onSignIn}>
+          Sign in or register
+        </button>
+      )}
+    </section>
+  );
 }
 
 function Overview({ text, selectedHazard, onSelectHazard, onNavigate }) {
@@ -611,12 +917,32 @@ function During({ language, selectedHazard, onSelectHazard }) {
   const [openHazardId, setOpenHazardId] = useState(
     selectedHazard === "all" ? "" : selectedHazard,
   );
+  const [safetyTips, setSafetyTips] = useState([]);
+  const [safetyTipsLoading, setSafetyTipsLoading] = useState(true);
+  const [safetyTipsError, setSafetyTipsError] = useState("");
   const phaseLabels = {
     before: translateWithFallback("Before", language).text,
     during: translateWithFallback("During", language).text,
     after: translateWithFallback("After", language).text,
   };
   const fallbackNotice = getTranslationFallbackNotice(language);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    getPublishedSafetyTips(controller.signal)
+      .then((tips) => {
+        if (!Array.isArray(tips)) {
+          throw new Error("The safety guidance service returned an unexpected response.");
+        }
+        setSafetyTips(tips);
+        setSafetyTipsError("");
+      })
+      .catch((error) => {
+        if (error.name !== "AbortError") setSafetyTipsError(error.message);
+      })
+      .finally(() => setSafetyTipsLoading(false));
+    return () => controller.abort();
+  }, []);
 
   return (
     <>
@@ -653,12 +979,23 @@ function During({ language, selectedHazard, onSelectHazard }) {
               {isOpen && (
                 <div className="safety-guide-card-content" id={detailsId}>
                   <h3>{hazard.title} safety guide</h3>
-                  <table className="safety-guide-table">
+                  {safetyTipsLoading ? (
+                    <p className="safety-language-note" role="status">Loading published safety guidance…</p>
+                  ) : safetyTipsError ? (
+                    <p className="auth-message auth-message-error" role="alert">{safetyTipsError}</p>
+                  ) : safetyTips.filter((tip) => tip.hazard_type === hazard.id || tip.hazard_type === "all-hazards").length === 0 ? (
+                    <p className="safety-language-note">No published safety guidance is currently available for this hazard.</p>
+                  ) : (
+                    <table className="safety-guide-table">
                     <thead>
                       <tr><th scope="col">Phase</th><th scope="col">What to do</th></tr>
                     </thead>
                     <tbody>
-                      {Object.entries(hazard.guidance).map(([phase, instructions]) => (
+                      {["before", "during", "after"].map((phase) => {
+                        const instructions = safetyTips
+                          .filter((tip) => (tip.hazard_type === hazard.id || tip.hazard_type === "all-hazards") && tip.phase === phase)
+                          .map((tip) => tip.content);
+                        return instructions.length === 0 ? null : (
                         <tr key={phase}>
                           <th scope="row">{phaseLabels[phase]}</th>
                           <td>
@@ -667,9 +1004,11 @@ function During({ language, selectedHazard, onSelectHazard }) {
                             </ul>
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
-                  </table>
+                    </table>
+                  )}
                   {fallbackNotice && <p className="safety-language-note" role="status">{fallbackNotice}</p>}
                   <EmergencyContactList hazardId={hazard.id} language={language} compact />
                 </div>
@@ -812,124 +1151,356 @@ function LocationSharing({ language }) {
   );
 }
 
-function Response({ responseType, setResponseType, onSubmit, formMessage }) {
-  return (
-    <>
-      <div className="notice-banner notice-amber">
-        <span className="notice-symbol">!</span>
-        <div><strong>Request form · not monitored</strong><p>Information entered here is not sent to responders.</p></div>
-      </div>
-      <div className="response-layout">
-        <section className="panel response-form-panel">
-          <div className="response-tabs" role="tablist" aria-label="Choose a response form">
-            <button className={responseType === "request" ? "response-tab active" : "response-tab"} onClick={() => { setResponseType("request"); }}>
-              <Icon name="life" size={18} /> I need help
-            </button>
-            <button className={responseType === "offer" ? "response-tab active" : "response-tab"} onClick={() => { setResponseType("offer"); }}>
-              <Icon name="people" size={18} /> I can help
-            </button>
-          </div>
-          <div className="form-intro">
-            <span className="section-kicker">{responseType === "request" ? "REQUEST SUPPORT" : "OFFER SUPPORT"}</span>
-            <h2>{responseType === "request" ? "Tell us what you need" : "Share how you can help"}</h2>
-            <p>{responseType === "request" ? "Provide the basic details needed to describe a request for support." : "Provide the basic details of support you can offer."}</p>
-          </div>
-          <form className="response-form" onSubmit={onSubmit}>
-            <div className="form-row">
-              <label>
-                {responseType === "request" ? "Type of need" : "Type of support"}
-                <select required defaultValue="">
-                  <option value="" disabled>Select an option</option>
-                  {(responseType === "request"
-                    ? ["Food and drinking water", "Medical assistance", "Rescue / evacuation", "Temporary shelter", "Other"]
-                    : ["Food and drinking water", "Medical assistance", "Transport", "Temporary shelter", "Other"]
-                  ).map((item) => <option key={item}>{item}</option>)}
-                </select>
-              </label>
-              <label>
-                {responseType === "request" ? "Urgency" : "Available capacity"}
-                <select required defaultValue="">
-                  <option value="" disabled>Select an option</option>
-                  {(responseType === "request"
-                    ? ["Urgent — immediate safety concern", "High — needed today", "General — when possible"]
-                    : ["1–5 people", "6–20 people", "More than 20 people"]
-                  ).map((item) => <option key={item}>{item}</option>)}
-                </select>
-              </label>
-            </div>
-            <div className="form-row">
-              <label>
-                State / district
-                <input required placeholder="Enter state and district" />
-              </label>
-              <label>
-                Village / ward / nearby landmark
-                <input required placeholder="Enter a local area or landmark" />
-              </label>
-            </div>
-            <label>
-              {responseType === "request" ? "What should responders know?" : "Any details about your offer?"}
-              <textarea rows="4" placeholder="Share only the details needed to understand the situation." />
-            </label>
-            <label className="consent-row">
-              <input type="checkbox" required />
-              <span>I understand this form will not contact emergency services or send information to responders.</span>
-            </label>
-            <div className="form-actions">
-              <button className="button button-primary" type="submit">
-                {responseType === "request" ? "Preview request" : "Preview offer"} <Icon name="arrow" size={17} />
-              </button>
-              <span><Icon name="database" size={15} /> This form does not transmit or store submissions</span>
-            </div>
-            {formMessage && <div className="form-confirmation" role="status">{formMessage}</div>}
-          </form>
-        </section>
-        <aside className="response-aside">
-          <div className="panel matching-panel">
-            <span className="section-kicker">HOW MATCHING WILL WORK</span>
-            <h2>Needs meet local capacity</h2>
-            <p>Requests and offers can be organized around location, need type, and urgency.</p>
-            <div className="match-steps">
-              <div><span>1</span><p><strong>Share a need or offer</strong><small>Specific, useful information</small></p></div>
-              <div><span>2</span><p><strong>Review nearby options</strong><small>Distance and availability</small></p></div>
-              <div><span>3</span><p><strong>Confirm a match</strong><small>Only after human confirmation</small></p></div>
-            </div>
-            <div className="privacy-note"><Icon name="shield" size={17} /> Do not enter sensitive personal or medical details in this prototype.</div>
-          </div>
-        </aside>
-      </div>
-    </>
-  );
-}
-
 function DataSources() {
+  const [status, setStatus] = useState(null);
+  const [statusError, setStatusError] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
+  const [forecasts, setForecasts] = useState(null);
+  const [localReadiness, setLocalReadiness] = useState(null);
+  const [nearestShelters, setNearestShelters] = useState(null);
+  const [latitude, setLatitude] = useState("");
+  const [longitude, setLongitude] = useState("");
+  const [placeQuery, setPlaceQuery] = useState("");
+  const [placeResults, setPlaceResults] = useState([]);
+  const [placeProvider, setPlaceProvider] = useState("");
+  const [placeMessage, setPlaceMessage] = useState("");
+  const [hasLocalSuggestions, setHasLocalSuggestions] = useState(false);
+  const [selectedPlace, setSelectedPlace] = useState(null);
+  const [activePlaceIndex, setActivePlaceIndex] = useState(-1);
+  const [searchingPlaces, setSearchingPlaces] = useState(false);
+  const [localMessage, setLocalMessage] = useState("");
+
+  const loadStatus = async (signal) => {
+    setStatusError("");
+    try {
+      setStatus(await getCoreStatus(signal));
+    } catch (error) {
+      if (error.name !== "AbortError") {
+        setStatusError("Could not reach the AapdaSetu backend status endpoint.");
+        setStatus(null);
+      }
+    }
+  };
+
+  useEffect(() => {
+    const controller = new AbortController();
+    loadStatus(controller.signal);
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    const query = placeQuery.trim();
+    if (selectedPlace && (placeQuery === (selectedPlace.display_name || selectedPlace.name))) {
+      setPlaceResults([]);
+      setActivePlaceIndex(-1);
+      return undefined;
+    }
+    if (query.length < 2) {
+      setPlaceResults([]);
+      setPlaceProvider("");
+      setActivePlaceIndex(-1);
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(async () => {
+      setSearchingPlaces(true);
+      try {
+        const data = await searchPlaces(query, 6, controller.signal);
+        setPlaceResults(data.results || []);
+        setPlaceProvider(data.provider || "");
+        setHasLocalSuggestions(Boolean(data.has_local_suggestions));
+        setPlaceMessage(data.message || "");
+        setActivePlaceIndex(-1);
+      } catch (error) {
+        if (error.name !== "AbortError") {
+          setPlaceResults([]);
+          setPlaceProvider("");
+        }
+      } finally {
+        if (!controller.signal.aborted) setSearchingPlaces(false);
+      }
+    }, 350);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      controller.abort();
+    };
+  }, [placeQuery, selectedPlace]);
+
+  async function refreshForecasts() {
+    const controller = new AbortController();
+    setRefreshing(true);
+    setLocalMessage("");
+    try {
+      const [statusData, forecastData] = await Promise.all([
+        getCoreStatus(controller.signal),
+        getLiveForecasts(true, controller.signal),
+      ]);
+      setStatus(statusData);
+      setForecasts(forecastData);
+    } catch (error) {
+      setLocalMessage(error.message || "The live provider refresh failed.");
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
+  function handlePlaceInputKeyDown(event) {
+    if (event.key === "Escape") {
+      setPlaceResults([]);
+      setActivePlaceIndex(-1);
+      return;
+    }
+    if (placeResults.length === 0) return;
+
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setActivePlaceIndex((current) =>
+        current >= placeResults.length - 1 ? 0 : current + 1,
+      );
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setActivePlaceIndex((current) =>
+        current <= 0 ? placeResults.length - 1 : current - 1,
+      );
+    } else if (event.key === "Enter" && activePlaceIndex >= 0) {
+      event.preventDefault();
+      selectPlace(placeResults[activePlaceIndex]);
+    }
+  }
+
+  async function submitPlaceSearch(event) {
+    event.preventDefault();
+    const query = placeQuery.trim();
+    if (query.length < 2) {
+      setLocalMessage("Enter at least two characters, such as a district or city name.");
+      return;
+    }
+
+    const controller = new AbortController();
+    setSearchingPlaces(true);
+    setPlaceResults([]);
+    setPlaceProvider("");
+    setLocalMessage("Searching India place names…");
+    try {
+      const data = await searchPlaces(query, 5, controller.signal);
+      setPlaceResults(data.results || []);
+      setSelectedPlace(null);
+      setPlaceProvider(data.provider || "");
+      setHasLocalSuggestions(Boolean(data.has_local_suggestions));
+      setPlaceMessage(data.message || "");
+      setLocalMessage(
+        data.results?.length
+          ? `${data.results.length} location${data.results.length === 1 ? "" : "s"} found. Select a result to check readiness.`
+          : "No matching place was found. Try the district name and state.",
+      );
+    } catch (error) {
+      setLocalMessage(error.message || "Place search failed.");
+    } finally {
+      setSearchingPlaces(false);
+    }
+  }
+
+  async function selectPlace(place) {
+    setPlaceQuery(place.display_name || place.name);
+    setPlaceResults([]);
+    setActivePlaceIndex(-1);
+    setSelectedPlace(place);
+    setLocalReadiness(null);
+    setNearestShelters(null);
+    setLocalMessage(`Loading nearest hazard zone for ${place.name || place.display_name}…`);
+    await checkCoordinates(place.latitude, place.longitude);
+  }
+
+  async function checkCoordinates(lat, lon) {
+    const controller = new AbortController();
+    setLocalMessage("Checking backend readiness for this coordinate…");
+    try {
+      const [localData, shelterData] = await Promise.all([
+        getLocalReadiness(lat, lon, controller.signal),
+        getNearestShelters(lat, lon, 5, controller.signal),
+      ]);
+      setLatitude(String(lat));
+      setLongitude(String(lon));
+      setLocalReadiness(localData);
+      setNearestShelters(shelterData);
+      setLocalMessage("Coordinate check complete from the backend.");
+    } catch (error) {
+      setLocalReadiness(null);
+      setNearestShelters(null);
+      setLocalMessage(error.message || "Could not check local readiness.");
+    }
+  }
+
+  function useDeviceCoordinates() {
+    if (!navigator.geolocation) {
+      setLocalMessage("This browser does not provide geolocation.");
+      return;
+    }
+    setLocalMessage("Requesting device coordinates…");
+    navigator.geolocation.getCurrentPosition(
+      (position) => checkCoordinates(position.coords.latitude, position.coords.longitude),
+      () => setLocalMessage("Could not get your coordinates. Check browser permission and try again."),
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 },
+    );
+  }
+
+  function submitCoordinates(event) {
+    event.preventDefault();
+    const lat = Number(latitude);
+    const lon = Number(longitude);
+    if (!Number.isFinite(lat) || lat < -90 || lat > 90 || !Number.isFinite(lon) || lon < -180 || lon > 180) {
+      setLocalMessage("Enter a latitude from -90 to 90 and longitude from -180 to 180.");
+      return;
+    }
+    checkCoordinates(lat, lon);
+  }
+
+  const telemetryAvailable = Boolean(status?.telemetry?.available);
+  const sheltersAvailable = Boolean(status?.shelters?.available);
+  const alertsAvailable = Boolean(status?.alerts?.available);
+  const translationAvailable = Boolean(status?.translation?.available);
+  const routingAvailable = Boolean(status?.routing?.available);
+  const allReady = telemetryAvailable && sheltersAvailable && alertsAvailable && routingAvailable;
+
   return (
     <>
       <section className="data-summary">
         <div className="data-summary-copy">
           <span className="section-kicker">ALL-HAZARD DATA READINESS</span>
           <h2>Regional services and verified information</h2>
-          <p>Data and services must be verified for each local area before they can support live decisions.</p>
+          <p>Backend status and coordinate checks determine whether live or verified local information is available.</p>
         </div>
-        <div className="readiness-badge"><span /> LIVE SERVICES NOT CONNECTED</div>
+        <div className={`readiness-badge ${allReady ? "ready" : ""}`}>
+          <span /> {statusError ? "BACKEND UNAVAILABLE" : status ? (allReady ? "CORE SERVICES READY" : "PARTIALLY AVAILABLE") : "CHECKING SERVICES"}
+        </div>
       </section>
+
       <div className="data-stat-grid">
-        <div className="data-stat"><span className="stat-label">LIVE HAZARD FEEDS</span><strong className="stat-pending">Unavailable</strong><small>No live source is connected</small></div>
-        <div className="data-stat"><span className="stat-label">VERIFIED SHELTERS</span><strong className="stat-pending">Unavailable</strong><small>Local coordinates are not connected</small></div>
+        <div className="data-stat">
+          <span className="stat-label">LIVE HAZARD FEEDS</span>
+          <strong className={telemetryAvailable ? "" : "stat-pending"}>{telemetryAvailable ? "Available" : status ? "Unavailable" : "Checking"}</strong>
+          <small>{status?.telemetry?.last_error || (telemetryAvailable ? `${status.telemetry.sentinel_count} sentinels responding` : "Open-provider feed not initialized")}</small>
+        </div>
+        <div className="data-stat">
+          <span className="stat-label">VERIFIED SHELTERS</span>
+          <strong className={sheltersAvailable ? "" : "stat-pending"}>{sheltersAvailable ? `${status.shelters.verified_count} verified` : "Unavailable"}</strong>
+          <small>{sheltersAvailable ? "Published PostGIS shelter records" : "No verified shelter records are available"}</small>
+        </div>
         <div className="data-stat"><span className="stat-label">EMERGENCY CONTACT</span><strong>112</strong><small>India emergency response number</small></div>
       </div>
+
       <section className="panel data-table-panel">
         <div className="panel-heading">
           <div><span className="section-kicker">SERVICE AVAILABILITY</span><h2>Information shown on this dashboard</h2></div>
+          <button className="button button-secondary" type="button" onClick={refreshForecasts} disabled={refreshing}>{refreshing ? "Refreshing…" : "Refresh live feeds"}</button>
         </div>
+        {statusError && <p className="location-status">{statusError}</p>}
         <div className="source-list">
-          <SourceRow status="pending" title="Live forecasts and official alerts" detail="No live forecast or alert service is connected." />
-          <SourceRow status="pending" title="Local shelter locations and safe routes" detail="No verified local shelter or route recommendations are available." />
-          <SourceRow status="pending" title="Regional-language alert delivery" detail="Translation and alert delivery services are not connected." />
+          <SourceRow status={telemetryAvailable ? "available" : "pending"} title="Live forecasts and official alerts" detail={telemetryAvailable ? `${status.telemetry.sentinel_count} configured sentinels have returned provider data.` : "Open providers have not returned an initialized live snapshot."} />
+          <SourceRow status={sheltersAvailable && routingAvailable ? "available" : "pending"} title="Local shelter locations and safe routes" detail={sheltersAvailable ? `${status.shelters.verified_count} verified shelter records plus routing are connected.` : "Local shelter routing is connected; no verified shelter feed is published."} />
+          <SourceRow status={alertsAvailable && translationAvailable ? "available" : "pending"} title="Regional-language alert delivery" detail={status?.translation?.bhashini ? "Bhashini configuration is active; mock delivery is available." : "Mock delivery is active with Google/local fallback; uncached text may remain in English."} />
           <SourceRow status="available" title="Safety guidance" detail="General hazard-specific information is available in the safety guides." />
           <SourceRow status="available" title="Emergency contact" detail="India emergency response number: 112." />
         </div>
       </section>
+
+      <section className="panel location-readiness-panel">
+        <div className="panel-heading"><div><span className="section-kicker">PER-AREA CHECK</span><h2>Check a local area</h2></div></div>
+        <p className="data-area-copy">Search by district or place name, enter coordinates, or explicitly share your device location. The backend will return the nearest hazard zone and shelter readiness.</p>
+        <form className="place-search-form" onSubmit={submitPlaceSearch}>
+          <label htmlFor="place-search">Search district or place in India</label>
+          <div className="place-search-row">
+            <input
+              id="place-search"
+              type="search"
+              value={placeQuery}
+              onChange={(event) => {
+                setPlaceQuery(event.target.value);
+                setSelectedPlace(null);
+                setPlaceResults([]);
+                setActivePlaceIndex(-1);
+              }}
+              onKeyDown={handlePlaceInputKeyDown}
+              placeholder="Search by district, city, or landmark…"
+              autoComplete="off"
+              role="combobox"
+              aria-autocomplete="list"
+              aria-expanded={placeResults.length > 0}
+              aria-controls="place-search-results"
+              aria-activedescendant={activePlaceIndex >= 0 ? `place-result-${activePlaceIndex}` : undefined}
+            />
+            <button className="button button-primary" type="submit" disabled={searchingPlaces}>
+              {searchingPlaces ? "Searching…" : "Search map"}
+            </button>
+
+            {placeResults.length > 0 && (
+              <div
+                id="place-search-results"
+                className="place-search-results"
+                role="listbox"
+                aria-label="Place search suggestions"
+              >
+                {placeResults.map((place, index) => (
+                  <button
+                    type="button"
+                    role="option"
+                    id={`place-result-${index}`}
+                    aria-selected={activePlaceIndex === index}
+                    key={`${place.place_id || place.display_name}-${place.latitude}-${place.longitude}`}
+                    className={`${activePlaceIndex === index ? "active " : ""}${selectedPlace?.latitude === place.latitude && selectedPlace?.longitude === place.longitude ? "selected" : ""}`}
+                    onMouseEnter={() => setActivePlaceIndex(index)}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => selectPlace(place)}
+                  >
+                    <span><strong>{place.name}</strong><small>{place.display_name}</small></span>
+                    <span className="place-result-coordinates">{place.latitude.toFixed(4)}, {place.longitude.toFixed(4)}</span>
+                  </button>
+                ))}
+                {placeMessage && <small className="place-provider place-suggestion-message">{placeMessage}</small>}
+                {placeProvider && <small className="place-provider">Provider: {placeProvider === "google-maps-geocoding" ? "Google Maps Geocoding" : placeProvider === "aapdasetu-sentinel-fallback" ? "AapdaSetu similar-area fallback" : "OpenStreetMap fallback"}{hasLocalSuggestions ? " + AapdaSetu similar areas" : ""}</small>}
+              </div>
+            )}
+          </div>
+        </form>
+
+        <form className="coordinate-form" onSubmit={submitCoordinates}>
+          <label>Latitude<input type="number" step="0.000001" min="-90" max="90" value={latitude} onChange={(event) => setLatitude(event.target.value)} placeholder="28.6139" /></label>
+          <label>Longitude<input type="number" step="0.000001" min="-180" max="180" value={longitude} onChange={(event) => setLongitude(event.target.value)} placeholder="77.2090" /></label>
+          <button className="button button-primary" type="submit">Check area</button>
+          <button className="button button-secondary" type="button" onClick={useDeviceCoordinates}>Use device location</button>
+        </form>
+        {localMessage && <p className="location-status">{localMessage}</p>}
+
+        {selectedPlace && localReadiness && (
+          <div className="selected-location-card" role="status">
+            <span className="selected-location-icon">⌖</span>
+            <div>
+              <strong>{selectedPlace.name || selectedPlace.display_name}</strong>
+              <small>{selectedPlace.display_name}</small>
+            </div>
+            <span className="selected-location-coordinates">{selectedPlace.latitude.toFixed(5)}, {selectedPlace.longitude.toFixed(5)}</span>
+          </div>
+        )}
+
+        {localReadiness && (
+          <div className="local-readiness-grid">
+            <div><strong>Nearest hazard zone</strong>{localReadiness.nearest_hazard_zone ? <small>{localReadiness.nearest_hazard_zone.region} · {localReadiness.nearest_hazard_zone.level?.toUpperCase()} · score {localReadiness.nearest_hazard_zone.score}{typeof localReadiness.nearest_hazard_zone.distance_km === "number" ? ` · ${localReadiness.nearest_hazard_zone.distance_km} km away` : ""}</small> : <small>No live sentinel result is initialized for this area.</small>}</div>
+            <div><strong>Verified shelters</strong><small>{localReadiness.verified_shelters.length ? `${localReadiness.verified_shelters.length} verified nearby` : "No verified shelter records for this coordinate check"}</small></div>
+            <div><strong>Local routing</strong><small>{localReadiness.route_available ? "Local route endpoint available" : "Routing unavailable"}</small></div>
+          </div>
+        )}
+
+        {nearestShelters && nearestShelters.shelters?.length > 0 && (
+          <div className="nearby-shelters">
+            <strong>{nearestShelters.verified ? "Nearby verified shelters" : "Nearby unverified shelter entries"}</strong>
+            <ul>{nearestShelters.shelters.map((shelter) => <li key={shelter.id || shelter.name}>{shelter.name} · {shelter.distance_km} km · {shelter.verification_status || "unverified"}</li>)}</ul>
+          </div>
+        )}
+      </section>
+
+      {forecasts && <section className="panel forecast-summary"><strong>Latest provider refresh</strong><small>{forecasts.available ? `${forecasts.forecasts.length} provider risk indicators returned` : forecasts.reason}</small></section>}
     </>
   );
 }

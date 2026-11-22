@@ -1,4 +1,4 @@
-"""Database initialization and seeding script using real Lower Kosi data."""
+"""Optional database seed script; geography records remain unverified prototypes."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ import pandas as pd
 from geoalchemy2.elements import WKTElement
 from sqlalchemy.orm import Session
 
-from app.core.database import SessionLocal, init_db
+from app.core.database import SessionLocal
 from app.models.alert import Alert
 from app.models.hazard_risk_score import HazardRiskScore
 from app.models.match import Match
@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 REPO_ROOT = Path(__file__).resolve().parents[3]
 RAW_DATA_FILE = REPO_ROOT / "ml" / "data" / "raw" / "bihar_sw_daily_discharge_manual.csv"
 
-# Real spatial boundaries for Lower Kosi focus districts (SRID 4326: Lon, Lat)
+# Unverified prototype polygons for configured study-area districts (SRID 4326).
 DISTRICT_BOUNDARIES = {
     "Supaul": {
         "name": "Supaul",
@@ -54,7 +54,7 @@ DISTRICT_BOUNDARIES = {
     },
 }
 
-# Real-world emergency shelter locations (Government schools, flood shelters, and community centres)
+# Unverified prototype shelter records; source validation is still required.
 SHELTERS_DATA = [
     # Supaul shelters
     {
@@ -158,11 +158,95 @@ SHELTERS_DATA = [
         "lon": 87.6000,
         "lat": 25.8000,
     },
+    {
+        "district": "",
+        "name": "Guwahati Community Shelter",
+        "capacity": 900,
+        "lon": 91.7362,
+        "lat": 26.1445,
+    },
+    {
+        "district": "",
+        "name": "Kolkata East Emergency Shelter",
+        "capacity": 1200,
+        "lon": 88.3639,
+        "lat": 22.5726,
+    },
+    {
+        "district": "",
+        "name": "Rajahmundry Cyclone Relief Centre",
+        "capacity": 800,
+        "lon": 81.7667,
+        "lat": 16.9667,
+    },
+    {
+        "district": "",
+        "name": "Machilipatnam Coastal Shelter",
+        "capacity": 700,
+        "lon": 81.1400,
+        "lat": 16.1800,
+    },
+    {
+        "district": "",
+        "name": "Bhubaneswar District Emergency Centre",
+        "capacity": 1100,
+        "lon": 85.8245,
+        "lat": 20.2961,
+    },
+    {
+        "district": "",
+        "name": "Indore Civic Relief Centre",
+        "capacity": 650,
+        "lon": 75.8577,
+        "lat": 22.7196,
+    },
+    {
+        "district": "",
+        "name": "Delhi West Emergency Assembly Centre",
+        "capacity": 1500,
+        "lon": 77.2090,
+        "lat": 28.6139,
+    },
+    {
+        "district": "",
+        "name": "Ahmedabad Civil Shelter",
+        "capacity": 900,
+        "lon": 72.8311,
+        "lat": 21.1702,
+    },
+    {
+        "district": "",
+        "name": "Chennai Coast Relief Centre",
+        "capacity": 1300,
+        "lon": 80.2707,
+        "lat": 13.0827,
+    },
+    {
+        "district": "",
+        "name": "Aurangabad Marathwada Relief Centre",
+        "capacity": 600,
+        "lon": 75.3433,
+        "lat": 19.8762,
+    },
+    {
+        "district": "",
+        "name": "Anantapur Drought Relief Centre",
+        "capacity": 550,
+        "lon": 77.6006,
+        "lat": 14.6819,
+    },
+    {
+        "district": "",
+        "name": "Jhansi Bundelkhand Shelter",
+        "capacity": 700,
+        "lon": 78.6115,
+        "lat": 25.4358,
+    },
 ]
 
 
 def seed_regions(session: Session) -> dict[str, Region]:
-    """Seed the 4 pilot focus districts and return a lookup dictionary."""
+    """Seed unverified prototype districts and return a lookup dictionary."""
     existing_regions = {r.name: r for r in session.query(Region).all()}
     regions_map: dict[str, Region] = {}
 
@@ -176,6 +260,8 @@ def seed_regions(session: Session) -> dict[str, Region]:
                 district_name=data["district_name"],
                 region_type=data["region_type"],
                 boundary=WKTElement(data["wkt"], srid=4326),
+                source_name="Unverified project seed data",
+                source_reference="backend/app/services/seed.py",
             )
             session.add(region)
             session.flush()
@@ -186,7 +272,7 @@ def seed_regions(session: Session) -> dict[str, Region]:
 
 
 def seed_shelters(session: Session, regions_map: dict[str, Region]) -> list[Shelter]:
-    """Seed designated emergency flood shelters."""
+    """Seed unverified prototype shelter records."""
     existing_names = {s.name for s in session.query(Shelter.name).all()}
     created_shelters: list[Shelter] = []
 
@@ -203,6 +289,8 @@ def seed_shelters(session: Session, regions_map: dict[str, Region]) -> list[Shel
             capacity=shelter_info["capacity"],
             current_occupancy=0,
             location=WKTElement(point_wkt, srid=4326),
+            source_name="Unverified project seed data",
+            source_reference="backend/app/services/seed.py",
         )
         session.add(shelter)
         created_shelters.append(shelter)
@@ -212,9 +300,7 @@ def seed_shelters(session: Session, regions_map: dict[str, Region]) -> list[Shel
     return created_shelters
 
 
-def seed_birpur_discharge_and_risk(
-    session: Session, regions_map: dict[str, Region]
-) -> int:
+def seed_birpur_discharge_and_risk(session: Session, regions_map: dict[str, Region]) -> int:
     """Calculate and seed hazard risk scores from real Birpur Barrage discharge records."""
     if not RAW_DATA_FILE.exists():
         logger.warning(
@@ -228,12 +314,8 @@ def seed_birpur_discharge_and_risk(
         logger.warning("No Birpur Barrage records found in raw CSV.")
         return 0
 
-    birpur["ParsedDate"] = pd.to_datetime(
-        birpur["Date"], format="%d-%m-%Y", errors="coerce"
-    )
-    birpur = birpur.dropna(subset=["ParsedDate", "Discharge (M3/s)"]).sort_values(
-        "ParsedDate"
-    )
+    birpur["ParsedDate"] = pd.to_datetime(birpur["Date"], format="%d-%m-%Y", errors="coerce")
+    birpur = birpur.dropna(subset=["ParsedDate", "Discharge (M3/s)"]).sort_values("ParsedDate")
 
     # Take the 60 most recent continuous observations
     sample_records = birpur.tail(60)
@@ -397,13 +479,10 @@ def seed_sos_and_volunteers(session: Session) -> None:
 
 
 def run_seed() -> None:
-    """Run table initialization followed by data seeding."""
-    logger.info("Initializing database tables...")
-    init_db()
-
+    """Seed data into a database whose schema has already been migrated."""
     session = SessionLocal()
     try:
-        logger.info("Starting seed process using real Lower Kosi data...")
+        logger.info("Starting seed process; geography records are unverified prototypes.")
         regions_map = seed_regions(session)
         seed_shelters(session, regions_map)
         seed_birpur_discharge_and_risk(session, regions_map)

@@ -19,24 +19,52 @@ services:
       timeout: 5s
       retries: 10
 
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "127.0.0.1:1025:1025"
+      - "127.0.0.1:8025:8025"
+
   backend:
     build:
       context: ./backend
     environment:
       BASIN_NAME: ${BASIN_NAME:-Lower Kosi Sub-Basin}
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-aapdasetu}:${POSTGRES_PASSWORD:-change-me-for-local-development}@db:5432/${POSTGRES_DB:-aapdasetu}
+      DATABASE_HOST: db
+      DATABASE_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-aapdasetu}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-for-local-development}
+      POSTGRES_DB: ${POSTGRES_DB:-aapdasetu}
       BHASHINI_USER_ID: ${BHASHINI_USER_ID:-}
       BHASHINI_ULCA_API_KEY: ${BHASHINI_ULCA_API_KEY:-}
       BHASHINI_PIPELINE_ENDPOINTS: ${BHASHINI_PIPELINE_ENDPOINTS:-{}}
+      TELEMETRY_SENTINELS_PATH: ${TELEMETRY_SENTINELS_PATH:-}
+      GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-}
+      SMTP_HOST: mailpit
+      SMTP_PORT: 1025
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-noreply@aapdasetu.local}
+      MAILPIT_UI_URL: ${MAILPIT_UI_URL:-http://localhost:8025}
+      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:5174}
+      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:-}
+      AUTH_ACCESS_TOKEN_MINUTES: ${AUTH_ACCESS_TOKEN_MINUTES:-60}
+      EMAIL_VERIFICATION_TOKEN_MINUTES: ${EMAIL_VERIFICATION_TOKEN_MINUTES:-1440}
+      BOOTSTRAP_ADMIN_FULL_NAME: ${BOOTSTRAP_ADMIN_FULL_NAME:-}
+      BOOTSTRAP_ADMIN_USERNAME: ${BOOTSTRAP_ADMIN_USERNAME:-}
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
     ports:
-      - "127.0.0.1:${API_PORT:-8001}:8000"
+      - "127.0.0.1:${API_PORT:-8002}:8000"
     depends_on:
       db:
         condition: service_healthy
+      mailpit:
+        condition: service_started
 
   frontend:
     build:
       context: ./frontend
+    environment:
+      VITE_API_PROXY_TARGET: http://backend:8000
     ports:
       - "127.0.0.1:${FRONTEND_PORT:-5174}:5173"
     depends_on:

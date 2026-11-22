@@ -110,8 +110,9 @@ def main() -> int:
         "",
         f"Generated: {datetime.now().isoformat(timespec='seconds')}",
         "",
-        "This report includes real files only. It contains no synthetic observations "
-        "or fabricated metrics.",
+        "This report describes files found locally. It does not certify source "
+        "provenance, usage rights, or operational fitness. No synthetic observations "
+        "or fabricated metrics are included.",
         "",
         "| File | Format | Date range | Rows | Missing value % | "
         "Time-step regularity | Gaps | Station / variable names |",

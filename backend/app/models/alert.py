@@ -18,12 +18,8 @@ class Alert(Base):
     hazard_type: Mapped[str] = mapped_column(String(40), nullable=False)
     message: Mapped[str] = mapped_column(Text, nullable=False)
     language: Mapped[str] = mapped_column(String(16), nullable=False, default="hi")
-    delivery_status: Mapped[str] = mapped_column(
-        String(32), nullable=False, default="pending"
-    )
-    area: Mapped[object | None] = mapped_column(
-        Geometry(geometry_type="GEOMETRY", srid=4326)
-    )
+    delivery_status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
+    area: Mapped[object | None] = mapped_column(Geometry(geometry_type="GEOMETRY", srid=4326))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

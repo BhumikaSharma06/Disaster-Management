@@ -1,0 +1,19 @@
+{
+  "shelters": [
+    {"name":"Dehradun Emergency Relief Centre","zone":"Uttarakhand Landslide Belt","latitude":30.3165,"longitude":78.0322,"capacity":500},
+    {"name":"Guwahati Community Shelter","zone":"Assam Valley","latitude":26.1445,"longitude":91.7362,"capacity":900},
+    {"name":"Supaul Zila High School Relief Centre","zone":"North Bihar","latitude":26.1260,"longitude":86.6050,"capacity":850},
+    {"name":"Purnia Zila School Relief Centre","zone":"North Bihar","latitude":25.7800,"longitude":87.4700,"capacity":1000},
+    {"name":"Kolkata East Emergency Shelter","zone":"Lower Ganga","latitude":22.5726,"longitude":88.3639,"capacity":1200},
+    {"name":"Rajahmundry Cyclone Relief Centre","zone":"Godavari Delta","latitude":16.9667,"longitude":81.7667,"capacity":800},
+    {"name":"Machilipatnam Coastal Shelter","zone":"Krishna Delta","latitude":16.1800,"longitude":81.1400,"capacity":700},
+    {"name":"Bhubaneswar District Emergency Centre","zone":"Odisha Coast","latitude":20.2961,"longitude":85.8245,"capacity":1100},
+    {"name":"Indore Civic Relief Centre","zone":"Central Narmada","latitude":22.7196,"longitude":75.8577,"capacity":650},
+    {"name":"Delhi West Emergency Assembly Centre","zone":"National Capital Region","latitude":28.6139,"longitude":77.2090,"capacity":1500},
+    {"name":"Ahmedabad Civil Shelter","zone":"South Gujarat","latitude":21.1702,"longitude":72.8311,"capacity":900},
+    {"name":"Chennai Coast Relief Centre","zone":"Tamil Nadu Coast","latitude":13.0827,"longitude":80.2707,"capacity":1300},
+    {"name":"Aurangabad Marathwada Relief Centre","zone":"Marathwada","latitude":19.8762,"longitude":75.3433,"capacity":600},
+    {"name":"Anantapur Drought Relief Centre","zone":"Rayalaseema","latitude":14.6819,"longitude":77.6006,"capacity":550},
+    {"name":"Jhansi Bundelkhand Shelter","zone":"Bundelkhand","latitude":25.4358,"longitude":78.6115,"capacity":700}
+  ]
+}

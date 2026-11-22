@@ -1,8 +1,8 @@
 # AapdaSetu real data audit report
 
-Generated: 2026-11-18T22:13:25
+Generated: 2026-11-19T15:38:10
 
-This report includes real files only. It contains no synthetic observations or fabricated metrics.
+This report describes files found locally. It does not certify source provenance, usage rights, or operational fitness. No synthetic observations or fabricated metrics are included.
 
 | File | Format | Date range | Rows | Missing value % | Time-step regularity | Gaps | Station / variable names |
 |---|---|---|---:|---:|---|---:|---|

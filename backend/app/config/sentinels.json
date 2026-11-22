@@ -1,0 +1,16 @@
+{
+  "sentinels": [
+    {"basin": "Ganga", "region": "Upper Ganga", "latitude": 30.3165, "longitude": 78.0322},
+    {"basin": "Ganga", "region": "Middle Ganga", "latitude": 25.4358, "longitude": 81.8463},
+    {"basin": "Ganga", "region": "Lower Ganga", "latitude": 22.5726, "longitude": 88.3639},
+    {"basin": "Brahmaputra", "region": "Assam Valley", "latitude": 26.1445, "longitude": 91.7362},
+    {"basin": "Kosi", "region": "North Bihar", "latitude": 26.5200, "longitude": 86.9167},
+    {"basin": "Godavari", "region": "Central Godavari", "latitude": 19.7515, "longitude": 75.7139},
+    {"basin": "Krishna", "region": "Upper Krishna", "latitude": 17.6868, "longitude": 83.2185},
+    {"basin": "Mahanadi", "region": "Odisha", "latitude": 20.2961, "longitude": 85.8245},
+    {"basin": "Narmada", "region": "Central Narmada", "latitude": 22.7196, "longitude": 75.8577},
+    {"basin": "Yamuna", "region": "National Capital Region", "latitude": 28.6139, "longitude": 77.2090},
+    {"basin": "Coastal", "region": "West Coast", "latitude": 15.2993, "longitude": 74.1240},
+    {"basin": "Coastal", "region": "East Coast", "latitude": 13.0827, "longitude": 80.2707}
+  ]
+}
